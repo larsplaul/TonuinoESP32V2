@@ -40,10 +40,6 @@ static constexpr uint8_t PIN_BTN_PLAY    = 41;
 // LED for RFID Card Detection
 static constexpr uint8_t PIN_LED_CARD = 2;
 
-// Track info
-static constexpr size_t MAX_TRACKS = 300;
-
-
 
 // ---------------- Volume control ----------------
 static Preferences prefs;
@@ -272,6 +268,12 @@ static QueueHandle_t audioQ = nullptr;
 
 // Track info helpers
 static void playPath(const String &path) {
+
+  if (!audioQ) { 
+    Serial.println("audioQ not ready"); 
+    return; 
+  }
+
   AudioCmd c{};
   c.type = CMD_PLAY_FILE;
   strncpy(c.path, path.c_str(), sizeof(c.path) - 1);
@@ -906,7 +908,8 @@ static void gamePlayMusicHint(bool alsoReplayPrompt) {
 
   const GameDef& g = games[activeGameIdx];
    Serial.print("Play Music Hint 1");
-  if (g.audio.musicHint.length() == 0) return;
+  if (g.audio.musicHint.length() == 0) 
+    return;
    Serial.print("Play Music Hint 2");
 
   gameNoticeActive = true;
@@ -941,6 +944,7 @@ static void gamePlayCurrentPrompt() {
 
   playPath(q.prompt);
 }
+bool lastAnswerWasCorrect = false;
 
 static void gameOnAnswerScanned(const CardEntry& card) {
   // Accept answer cards only while collecting
@@ -1023,9 +1027,9 @@ if (need > 1 && pendingCount < need) {
 
   if (pendingCount >= need) {
     // Evaluate immediately (no extra state needed)
-    bool ok = evalRule(r);
+    lastAnswerWasCorrect = evalRule(r);
 
-    if (ok) {
+    if (lastAnswerWasCorrect) {
       gameState = GameState::FEEDBACK;
       playPath(selectCorrectAudio(g, q));
       // advance question after feedback completes
@@ -1191,9 +1195,9 @@ Serial.println(SD.exists(g.audio.idleStop) ? "YES" : "NO");
 
       // 3) Normal correct/wrong feedback just finished -> advance or repeat
       const Question& q = g.questions[questionIdx];
-      bool ok = evalRule(q.rule);
+      //bool ok = evalRule(q.rule);
 
-      if (ok) {
+      if (lastAnswerWasCorrect) { //Was set by gameOnAnswerScanned()
         questionIdx++;
         clearPending();
         nextCardDueAt = 0;
@@ -1281,8 +1285,10 @@ static bool loadGamesJson(const char* jsonPath) {
       gd.audio.musicHint = String((const char*)(audio["musicHint"] | ""));
       gd.audio.idleStop = String((const char*)(audio["idleStop"] | ""));
     }
-    Serial.print("Game "); Serial.print(gd.id);
-    Serial.print(" idleStop="); Serial.println(gd.audio.idleStop);
+    Serial.print("Game "); 
+    Serial.print(gd.id);
+    Serial.print(" idleStop="); 
+    Serial.println(gd.audio.idleStop);
     
     JsonObject timing = g["timing"].as<JsonObject>();
     if (!timing.isNull()) {
@@ -1531,11 +1537,23 @@ void setup() {
   digitalWrite(PIN_LED_CARD, LOW);
 
   Serial.println("Init SD...");
-  if (!SD.begin(PIN_SD_CS, SPI, 8000000)) { // prøv 8MHz; hvis ustabilt: 4000000
+  while (!SD.begin(PIN_SD_CS, SPI, 8000000)) { // prøv 8MHz; hvis ustabilt: 4000000
+    Serial.println("SD.begin FAILED, try to remove and reinsert the SD-card");
+    digitalWrite(PIN_LED_CARD, HIGH);
+    delay(1000);
+    digitalWrite(PIN_LED_CARD, LOW);
+    delay(5000);
+  }
+  /*
+  while (!SD.begin(PIN_SD_CS, SPI, 8000000)) { // prøv 8MHz; hvis ustabilt: 4000000
     Serial.println("SD.begin FAILED");
     while (true)
       delay(1000);
   }
+  */
+
+
+
   Serial.println("SD OK");
 
   // I2S out (UDA1334)
@@ -1572,13 +1590,15 @@ void setup() {
   mfrc522.PCD_DumpVersionToSerial();
   Serial.println("RC522 OK");
 
+  audioQ = xQueueCreate(8, sizeof(AudioCmd));
+  xTaskCreatePinnedToCore(audioTask, "audio", 8192, nullptr, 3, nullptr, 1);
+
   // Load JSON
   loadCardsJson("/settings.json");
   loadGamesJson("/settings.json");   // games[]: rules + prompts + audio
   gameEnterIdle();     
 
-  audioQ = xQueueCreate(8, sizeof(AudioCmd));
-  xTaskCreatePinnedToCore(audioTask, "audio", 8192, nullptr, 3, nullptr, 1);
+
 }
 
 void loop() {
@@ -1639,7 +1659,8 @@ void loop() {
     return;
   }
   
-  Serial.print("Curent Mode is: "+e->role);
+  Serial.print("Current role is: ");
+  Serial.println(e->role);
   if (e->role == "game_selector") {
    Serial.println("GAME SELECT: " + e->gameId);
     gameStartById(e->gameId);   // always abort current + start selected
@@ -1654,7 +1675,6 @@ if (e->role == "answer") {
 if (e->role == "music") {
   if (gameModeActive) {
     gamePlayMusicHint(true);
-    //Serial.println("Music ignored while game active");
     return;
   }
 

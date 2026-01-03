@@ -1,0 +1,147 @@
+{
+  "version": 1,
+  "cards": [
+    {
+      "uid": "CC7B0D05",
+      "role": "music",
+      "title": "Hjulene på bussen",
+      "play": {
+        "kind": "single",
+        "file": "/audio/hjulene_paa_bus.mp3"
+      }
+    },
+    {
+      "uid": "4C9BF504",
+      "role": "music",
+      "title": "message",
+      "play": {
+        "kind": "single",
+        "file": "/audio/messages/besked.mp3"
+      }
+    },
+    {
+      "uid": "154B0705",
+      "role": "music",
+      "title": "mix2",
+      "play": {
+        "kind": "album",
+        "folder": "/audio/mix2"
+      }
+    },
+    {
+      "uid": "47350E05",
+      "role": "music",
+      "title": "mix",
+      "play": {
+        "kind": "playlist",
+        "tracks": [
+          {
+            "title": "Bro bro brille",
+            "file": "/audio/mix/Bro_bro_brille.mp3"
+          },
+          {
+            "title": "Fra Engeland Til Skotland",
+            "file": "/audio/mix/Fra Engeland Til Skotland.mp3"
+          },
+          {
+            "title": "En Papegøje Fra Amerika",
+            "file": "/audio/mix/JegErEnPapegøjeFraAmerika.mp3"
+          },
+          {
+            "title": "Jens Hansens Bondegård",
+            "file": "/audio/mix/JensHansensBondegård.mp3"
+          },
+          {
+            "title": "sø og land",
+            "file": "/audio/mix/sø_og_land.mp3"
+          }
+        ]
+      }
+    },
+    { "uid": "15FA1405", "role": "answer", "tags": ["dyr","elefant"]},
+    { "uid": "E66B0705", "role": "answer", "tags": ["dyr", "tiger"]},
+    
+    { "uid": "EE0A1005", "role": "answer", "tags": ["noels_mormor"]},
+    { "uid": "B94A0F05", "role": "answer", "tags": ["noels_morfar"]},
+    { "uid": "FE600F05", "role": "answer", "tags": ["noels_farmor"]},
+    { "uid": "CA241405", "role": "answer", "tags": ["noels_farfar"]},
+    { "uid": "2D351005", "role": "answer", "tags": ["noels_far"]},
+    { "uid": "BDCE1405", "role": "answer", "tags": ["noels_mor"]},
+    { "uid": "XXXXXXXXX", "role": "answer", "tags": ["robins_mor"]},
+    { "uid": "XXXXXXXXX", "role": "answer", "tags": ["robins_far"]},
+
+    { "uid": "E2551005", "role": "answer", "tags": ["tal"], "value": 1},
+    { "uid": "BC2E1405", "role": "answer", "tags": ["tal"], "value": 2},
+    { "uid": "XXXXXXXXX", "role": "answer", "tags": ["tal"], "value": 3 },
+    { "uid": "53284104",  "role": "game_selector", "title": "Gæt et dyr", "gameId": "dyr"},
+    { "uid": "A4CE0705",  "role": "game_selector", "title": "Gæt en ven", "gameId": "ven"},
+    { "uid": "CC8D0E05",  "role": "game_selector", "title": "Leg med tal", "gameId": "tal"}
+  ],
+  "games": [
+    {
+      "id": "dyr",
+      "audio": {
+        "intro": "/audio/games/common/introGameGeneral.mp3",
+        "correct": "/audio/games/common/correct.mp3",
+        "nextCardForAnswer" : "/audio/games/common/nextCardForAnswer.mp3",
+        "musicHint": "/audio/games/common/musicHint.mp3",
+        "wrong": "/audio/games/common/wrong.mp3",
+        "done": "/audio/games/common/done.mp3",
+        "idleStop": "/audio/games/common/idleStop.mp3"
+      },
+      "timing": {
+        "answerTimeoutMs": 25000,
+         "nextCardRepeatMs": 18000,
+         "maxRepeat": 3
+      },
+      "questions": [
+        { "prompt": "/audio/games/dyr/find_elephant.mp3", "answer": {"type": "requireTags","mode": "any", "tags": ["elefant"]}},
+        { "prompt": "/audio/games/dyr/find_elephant_tiger.mp3", "answer": {"type": "requireTags", "mode": "all","tags": ["elefant","tiger"],"cards": 2 }}
+      ]
+    },
+    {
+      "id": "ven",
+      "audio": {
+        "intro": "/audio/games/common/introGameGeneral.mp3",
+        "correct": "/audio/games/venner/correct.mp3",
+        "nextCardForAnswer" : "/audio/games/common/nextCardForAnswer.mp3",
+        "musicHint": "/audio/games/common/musicHint.mp3",
+        "wrong": "/audio/games/common/wrong.mp3",
+        "done": "/audio/games/common/done.mp3",
+        "idleStop": "/audio/games/common/idleStop.mp3"
+      },
+      "timing": {
+         "answerTimeoutMs": 25000,
+         "nextCardRepeatMs": 18000,
+         "maxRepeat": 3
+      },
+      "questions": [
+         { "prompt": "/audio/games/venner/find_mormor.mp3","audio":{"correct":"/games/ven/mormorCorrect.mp3","wrong":"/games/ven/mormorwrong.mp3"},"answer": {"type": "requireTags","mode": "any","tags": ["mormor"]}},
+         { "prompt": "/audio/games/venner/find_far.mp3", "answer": {"type": "requireTags", "mode": "any","tags": ["far"]}},
+         { "prompt": "/audio/games/venner/find_far_og_tiger.mp3", "answer": {"type": "requireTags", "mode": "all","tags": ["far","tiger"],"cards": 2}}
+      ]
+    },
+    {
+      "id": "tal",
+      "audio": {
+        "intro": "/audio/games/common/introGameGeneral.mp3",
+        "correct": "/audio/games/common/correct.mp3",
+        "nextCardForAnswer" : "/audio/games/common/nextCardForAnswer.mp3",
+        "musicHint": "/audio/games/common/musicHint.mp3",
+        "wrong": "/audio/games/common/wrong.mp3",
+        "done": "/audio/games/common/done.mp3",
+        "idleStop": "/audio/games/common/idleStop.mp3"
+      },
+      "timing": {
+         "answerTimeoutMs": 5000,
+         "nextCardRepeatMs": 8000,
+         "maxRepeat": 3
+      },
+      "questions": [
+        { "prompt": "/audio/games/tal/find2.mp3","answer": {"type": "sum","requireTags": [ "tal"],"equals": 2,"cards": 1}},
+        { "prompt": "/audio/games/tal/find_2_sum_3.mp3", "answer": {"type": "sum","requireTags": ["tal"],"equals": 3,"cards": 2}},
+        { "prompt": "/audio/games/tal/find_2_sum_4.mp3", "answer": {"type": "sum","requireTags": ["tal"],"equals": 4,"cards": 2}}
+      ]
+    }
+  ]
+}

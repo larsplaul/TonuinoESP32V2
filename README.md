@@ -1,9 +1,9 @@
 # Tonuiono music and game system
 This is a Tonuino inspired project with an added Game functionality
 Hardware:
-Board/chip: ESP32-S3 N16R8 (PSRAM)
-RC522 (SPI) + SD (SPI shared)
-MAX98357 (connected to 3V3) (I2S) --> Will be replaced with a UDA1334A and a PAM8406 (only one channel used) on 5V in the final setup
+- Board/chip: ESP32-S3 N16R8 (PSRAM)
+- RC522 (SPI) + SD (SPI shared)
+- MAX98357 (connected to 3V3) (I2S) --> Will be replaced with a UDA1334A and a PAM8406 (only one channel used) on 5V in the final setup
 
 Game logic and all music cards are defined in settings.json
 

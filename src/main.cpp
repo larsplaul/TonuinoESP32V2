@@ -5,11 +5,18 @@
 
 #include <ArduinoJson.h>
 #include <MFRC522.h>
+// Display
+#include <U8g2lib.h>
+#include <Wire.h>
 
-// ESP8266Audio 
+// ESP8266Audio
 #include "AudioFileSourceSD.h"
 #include "AudioGeneratorMP3.h"
 #include "AudioOutputI2S.h"
+
+// Display
+static constexpr uint8_t PIN_OLED_SDA = 42;
+static constexpr uint8_t PIN_OLED_SCL = 48;
 
 // SD (Shared SPI)
 static constexpr uint8_t PIN_SCK = 14;
@@ -28,18 +35,14 @@ static constexpr int PIN_I2S_DIN = 5;
 
 // Buttons
 static constexpr uint8_t PIN_BTN_FORWARD = 47;
-//static constexpr uint8_t PIN_BTN_PLAY = 48;
 static constexpr uint8_t PIN_BTN_BACK = 17;
 static constexpr uint8_t PIN_BTN_VOL_UP = 18;
 static constexpr uint8_t PIN_BTN_VOL_DOWN = 39;
 static constexpr uint8_t PIN_BTN_MODE_MUS = 40;
-static constexpr uint8_t PIN_BTN_PLAY    = 41;
-//static constexpr uint8_t PIN_BTN_MODE_GA = 41;
-//static constexpr uint8_t PIN_BTN_MODE_GB = 42;
+static constexpr uint8_t PIN_BTN_PLAY = 41;
 
 // LED for RFID Card Detection
 static constexpr uint8_t PIN_LED_CARD = 2;
-
 
 // ---------------- Volume control ----------------
 static Preferences prefs;
@@ -55,10 +58,53 @@ static constexpr float VOL_STEP = 0.05f;
 static constexpr float VOL_MIN = 0.05f;
 static constexpr float VOL_MAX = 0.9f;
 
+// Save meta data for
+#include <string>
+#include <unordered_map>
+struct TrackMeta {
+  String title;
+  String artist;
+};
+static std::unordered_map<std::string, TrackMeta> trackMetaByPath;
+
+static inline std::string keyOfPath(const String &p) {
+  return std::string(p.c_str());
+}
+
 // Handle last track for play/pause
 static constexpr const char *PREF_KEY_LASTPATH = "last_path";
 static char lastPath[128] = {0}; // RAM copy
 static bool hasLastPath = false;
+
+static constexpr size_t MAX_ACTIVE = 300;
+static String activeTracks[MAX_ACTIVE];
+static size_t activeCount = 0;
+static int activeIndex = -1;
+
+// Variables for OLED display
+static String oledLine1;  // Mode
+static String oledTitle;  // song titel or game titel
+static String oledArtist; // Only music
+
+static String activeTitle[MAX_ACTIVE];
+static String activeArtist[MAX_ACTIVE];
+static String activePlaylistTitle; // til linje 2
+
+static void uiSetNowPlayingFromPath(const String& path)
+{
+  auto it = trackMetaByPath.find(keyOfPath(path));
+  if (it != trackMetaByPath.end()) {
+    const String& t = it->second.title;
+    const String& a = it->second.artist;
+
+    if (t.length() > 0 && a.length() > 0) oledArtist = t + " - " + a;
+    else if (t.length() > 0)              oledArtist = t;
+    else if (a.length() > 0)              oledArtist = a;
+    else                                  oledArtist = "";
+  } else {
+    oledArtist = ""; // ingen metadata -> blank (ingen basename fallback)
+  }
+}
 
 enum Action {
   ACT_PLAY_PAUSE,
@@ -90,8 +136,8 @@ Button buttons[] = {
     {PIN_BTN_VOL_UP, ACT_VOL_UP, HIGH, 0, 0, 0},
     {PIN_BTN_VOL_DOWN, ACT_VOL_DOWN, HIGH, 0, 0, 0},
     {PIN_BTN_MODE_MUS, ACT_MODE_MUSIC, HIGH, 0, 0, 0}
-   // {PIN_BTN_MODE_GA, ACT_MODE_GAME_A, HIGH, 0, 0, 0},
-   // {PIN_BTN_MODE_GB, ACT_MODE_GAME_B, HIGH, 0, 0, 0},
+    // {PIN_BTN_MODE_GA, ACT_MODE_GAME_A, HIGH, 0, 0, 0},
+    // {PIN_BTN_MODE_GB, ACT_MODE_GAME_B, HIGH, 0, 0, 0},
 };
 
 static constexpr size_t BUTTON_COUNT = sizeof(buttons) / sizeof(buttons[0]);
@@ -116,12 +162,13 @@ enum PlayKind : uint8_t {
 };
 
 struct TrackItem {
-  String title; // optional
-  String file;  // absolute path
+  String title;  // optional
+  String artist; // optional
+  String file;   // absolute path
 };
 
 // A “pool” with all track-items from all album(track-lists)
-static constexpr size_t MAX_TRACKPOOL = 600; //Adjust if needed
+static constexpr size_t MAX_TRACKPOOL = 600; // Adjust if needed
 static TrackItem trackPool[MAX_TRACKPOOL];
 static size_t trackPoolCount = 0;
 
@@ -130,9 +177,10 @@ static constexpr uint8_t MAX_CARD_TAGS = 8;
 
 struct CardEntry {
   // Common
-  String uid;     // uppercase hex
-  String role;    // "music", "answer", "game_selector"
+  String uid;  // uppercase hex
+  String role; // "music", "answer", "game_selector"
   String title;
+  String artist;
 
   // ---------------- MUSIC ----------------
   PlayKind kind = PK_NONE;
@@ -161,17 +209,11 @@ struct CardEntry {
   int value = -1;
 };
 
-
 static constexpr size_t MAX_CARDS = 80;
 CardEntry cards[MAX_CARDS];
 size_t cardCount = 0;
 
 // End of Card tracking
-
-static constexpr size_t MAX_ACTIVE = 300;
-static String activeTracks[MAX_ACTIVE];
-static size_t activeCount = 0;
-static int activeIndex = -1;
 
 static void clearActivePlaylist() {
   activeCount = 0;
@@ -269,9 +311,9 @@ static QueueHandle_t audioQ = nullptr;
 // Track info helpers
 static void playPath(const String &path) {
 
-  if (!audioQ) { 
-    Serial.println("audioQ not ready"); 
-    return; 
+  if (!audioQ) {
+    Serial.println("audioQ not ready");
+    return;
   }
 
   AudioCmd c{};
@@ -299,6 +341,10 @@ static void playActiveIndex(int idx) {
     idx = (int)activeCount - 1;
 
   activeIndex = idx;
+
+  // UI line 3: track title/artist fra JSON (via path)
+  uiSetNowPlayingFromPath(activeTracks[activeIndex]);
+
   playPath(activeTracks[activeIndex]);
 }
 
@@ -322,7 +368,6 @@ static const CardEntry *findCardByUid(const String &uid) {
   }
   return nullptr;
 }
-
 
 static bool loadCardsJson(const char *jsonPath) {
   trackPoolCount = 0;
@@ -354,46 +399,50 @@ static bool loadCardsJson(const char *jsonPath) {
   }
 
   for (JsonObject c : arr) {
-    if (cardCount >= MAX_CARDS) break;
+    if (cardCount >= MAX_CARDS)
+      break;
 
-    const char *uid   = c["uid"]   | "";
-    const char *role  = c["role"]  | "";
+    const char *uid = c["uid"] | "";
+    const char *role = c["role"] | "";
     const char *title = c["title"] | "";
+    const char *artist = c["artist"] | "---";
 
     String suid(uid);
     suid.toUpperCase();
-    if (suid.length() == 0) continue;
+    if (suid.length() == 0)
+      continue;
 
     // -------- common fields --------
     CardEntry &ce = cards[cardCount];
-    ce.uid   = suid;
-    ce.role  = String(role);
+    ce.uid = suid;
+    ce.role = String(role);
     ce.title = String(title);
+    ce.artist = String(artist);
 
     // -------- defaults (important!) --------
-    ce.gameId   = "";
+    ce.gameId = "";
     ce.tagCount = 0;
-    ce.value    = -1;
+    ce.value = -1;
 
-    ce.kind      = PK_NONE;
-    ce.file      = "";
-    ce.folder    = "";
+    ce.kind = PK_NONE;
+    ce.file = "";
+    ce.folder = "";
     ce.trackStart = 0;
     ce.trackCount = 0;
 
     // -------- role-specific parsing --------
     if (ce.role == "game_selector") {
-      const char* gid = c["gameId"] | "";
+      const char *gid = c["gameId"] | "";
       ce.gameId = String(gid);
-    }
-    else if (ce.role == "answer") {
+    } else if (ce.role == "answer") {
       // tags[]
       JsonArray tags = c["tags"].as<JsonArray>();
       if (!tags.isNull()) {
         for (JsonVariant tv : tags) {
-          if (ce.tagCount >= MAX_CARD_TAGS) break;
-          if (tv.is<const char*>()) {
-            ce.tags[ce.tagCount++] = String(tv.as<const char*>());
+          if (ce.tagCount >= MAX_CARD_TAGS)
+            break;
+          if (tv.is<const char *>()) {
+            ce.tags[ce.tagCount++] = String(tv.as<const char *>());
           }
         }
       }
@@ -404,7 +453,8 @@ static bool loadCardsJson(const char *jsonPath) {
       }
     }
     // music (and any other roles that have play object)
-    // we only parse play for music cards to avoid accidental parsing on other roles
+    // we only parse play for music cards to avoid accidental parsing on other
+    // roles
     if (ce.role == "music") {
       JsonObject play = c["play"].as<JsonObject>();
       if (!play.isNull()) {
@@ -414,41 +464,59 @@ static bool loadCardsJson(const char *jsonPath) {
           const char *file = play["file"] | "";
           if (strlen(file) > 0) {
             ce.kind = PK_SINGLE;
-            ce.file = String(file);
+
+            // --- normaliser path (samme format overalt) ---
+            String path(file);
+            if (!path.startsWith("/"))
+              path = "/" + path;
+
+            ce.file = path;
+
+            // --- metadata-opslag: path -> {title, artist} ---
+            trackMetaByPath[keyOfPath(path)] = TrackMeta{ce.title, ce.artist};
           }
-        }
-        else if (strcmp(kind, "album") == 0 || strcmp(kind, "playlist") == 0) {
+        } else if (strcmp(kind, "album") == 0 ||
+                   strcmp(kind, "playlist") == 0) {
           const char *folder = play["folder"] | "";
           JsonArray tracks = play["tracks"].as<JsonArray>();
 
           if (strlen(folder) > 0) {
             ce.kind = PK_ALBUM_FOLDER;
             ce.folder = String(folder);
-          }
-          else if (!tracks.isNull()) {
+          } else if (!tracks.isNull()) {
             // tracks[] playlist/album
             uint16_t start = (uint16_t)trackPoolCount;
             uint16_t cnt = 0;
 
             for (JsonVariant tv : tracks) {
-              if (trackPoolCount >= MAX_TRACKPOOL) break;
+              if (trackPoolCount >= MAX_TRACKPOOL)
+                break;
 
               String ttitle = "";
-              String tfile  = "";
+              String tartist = "";
+              String tfile = "";
 
-              if (tv.is<const char*>()) {
-                tfile = String(tv.as<const char*>());
+              if (tv.is<const char *>()) {
+                tfile = String(tv.as<const char *>());
               } else if (tv.is<JsonObject>()) {
                 JsonObject to = tv.as<JsonObject>();
-                ttitle = String((const char*)(to["title"] | ""));
-                tfile  = String((const char*)(to["file"]  | ""));
+                ttitle = String((const char *)(to["title"] | ""));
+                tartist = String((const char *)(to["artist"] | "---"));
+                tfile = String((const char *)(to["file"] | ""));
               }
 
-              if (tfile.length() == 0) continue;
-              if (!tfile.startsWith("/")) tfile = "/" + tfile;
+              if (tfile.length() == 0)
+                continue;
+              if (!tfile.startsWith("/"))
+                tfile = "/" + tfile;
+
+              if (ttitle.length() > 0 || tartist.length() > 0) {
+                trackMetaByPath[keyOfPath(tfile)] = TrackMeta{ ttitle, tartist };
+              }  
 
               trackPool[trackPoolCount].title = ttitle;
-              trackPool[trackPoolCount].file  = tfile;
+              trackPool[trackPoolCount].artist = tartist;
+              trackPool[trackPoolCount].file = tfile;
               trackPoolCount++;
               cnt++;
             }
@@ -482,11 +550,10 @@ static bool loadCardsJson(const char *jsonPath) {
   return true;
 }
 
-
 static volatile bool isPaused = false;
 static volatile bool isPlaying = false;
 
-static volatile bool autoAdvance = false; // Only true for album/playlist
+static volatile bool autoAdvance = false;   // Only true for album/playlist
 static volatile bool playlistEnded = false; // Is set when last track is played
 
 static volatile bool advanceNeeded = false; // signal from audioTask -> loop
@@ -596,52 +663,39 @@ static void maybeSaveVolume(uint32_t now) {
   Serial.println(v);
 }
 
-
-
 // ================= GAME ENGINE START =================
 
 // ---- Game data limits ----
 static constexpr size_t MAX_GAMES = 10;
 static constexpr size_t MAX_QUESTIONS = 40;
-static constexpr size_t MAX_RULE_TAGS = 6;      // max tags in a rule
-static constexpr size_t MAX_PENDING = 2;        // you want 1 or 2 cards
-//static constexpr size_t MAX_CARD_TAGS = 8;      // max tags on an answer card
+static constexpr size_t MAX_RULE_TAGS = 6; // max tags in a rule
+static constexpr size_t MAX_PENDING = 2;   // you want 1 or 2 cards
+// static constexpr size_t MAX_CARD_TAGS = 8;      // max tags on an answer card
 static uint32_t nextCardDueAt = 0;
-static uint8_t repeatCount = 0;             // antal gange vi har gentaget spørgsmålet pga. inaktivitet
-static uint8_t nextCardRepeatCount = 0;     // antal nextCard reminders i nuværende forsøg
-static bool stopToMusicAfterAudio = false;  // når idleStop er afspillet, går vi til music
+static uint8_t repeatCount =
+    0; // antal gange vi har gentaget spørgsmålet pga. inaktivitet
+static uint8_t nextCardRepeatCount =
+    0; // antal nextCard reminders i nuværende forsøg
+static bool stopToMusicAfterAudio =
+    false; // når idleStop er afspillet, går vi til music
 
 static bool doneAnnounced = false;
 
 static bool gameNoticeActive = false;
 static bool replayPromptAfterNotice = false;
 
+enum class GameState : uint8_t { IDLE, INTRO, PROMPT, COLLECT, FEEDBACK, DONE };
 
-enum class GameState : uint8_t {
-  IDLE,
-  INTRO,
-  PROMPT,
-  COLLECT,
-  FEEDBACK,
-  DONE
-};
+enum class RuleType : uint8_t { REQUIRE_TAGS, SUM };
 
-enum class RuleType : uint8_t {
-  REQUIRE_TAGS,
-  SUM
-};
-
-enum class MatchMode : uint8_t {
-  ANY,
-  ALL
-};
+enum class MatchMode : uint8_t { ANY, ALL };
 
 struct GameAudio {
   String intro;
   String correct;
   String wrong;
   String done;
-  String nextCardForAnswer;  
+  String nextCardForAnswer;
   String musicHint;
   String idleStop;
 };
@@ -660,9 +714,9 @@ struct AnswerRule {
   uint8_t tagCount = 0;
 
   // sum
-  int equals = 0;           // target
-  uint8_t cards = 1;        // required cards (default 1)
-  String requireTags[MAX_RULE_TAGS];  // e.g. ["tal"]
+  int equals = 0;                    // target
+  uint8_t cards = 1;                 // required cards (default 1)
+  String requireTags[MAX_RULE_TAGS]; // e.g. ["tal"]
   uint8_t requireTagCount = 0;
 };
 
@@ -680,6 +734,7 @@ struct GameTiming {
 
 struct GameDef {
   String id;
+  String titel;
   GameAudio audio;
   GameTiming timing;
   Question questions[MAX_QUESTIONS];
@@ -708,25 +763,30 @@ static PendingCard pending[MAX_PENDING];
 static uint8_t pendingCount = 0;
 
 // Forward declarations (you already have these helpers somewhere)
-static void playPath(const String& path);   // your existing function that enqueues CMD_PLAY_FILE + persists lastPath
-static const CardEntry* findCardByUid(const String& uid); // you already have
-static String uidToHexUpper(const MFRC522::Uid& u);       // you already have
+static void
+playPath(const String &path); // your existing function that enqueues
+                              // CMD_PLAY_FILE + persists lastPath
+static const CardEntry *findCardByUid(const String &uid); // you already have
+static String uidToHexUpper(const MFRC522::Uid &u);       // you already have
 
 // ---- Utility ----
-static MatchMode parseMode(const char* s) {
-  if (!s) return MatchMode::ANY;
-  if (strcmp(s, "all") == 0) return MatchMode::ALL;
+static MatchMode parseMode(const char *s) {
+  if (!s)
+    return MatchMode::ANY;
+  if (strcmp(s, "all") == 0)
+    return MatchMode::ALL;
   return MatchMode::ANY;
 }
 
-static bool hasTag(const PendingCard& c, const String& tag) {
+static bool hasTag(const PendingCard &c, const String &tag) {
   for (uint8_t i = 0; i < c.tagCount; i++) {
-    if (c.tags[i] == tag) return true;
+    if (c.tags[i] == tag)
+      return true;
   }
   return false;
 }
 
-static bool unionHasTag(const String& unionTags, const String& tag) {
+static bool unionHasTag(const String &unionTags, const String &tag) {
   // simple contains with delimiters; we use "|tag|" encoding in buildUnionTags
   String needle = "|" + tag + "|";
   return unionTags.indexOf(needle) >= 0;
@@ -738,40 +798,47 @@ static String buildUnionTags() {
   for (uint8_t i = 0; i < pendingCount; i++) {
     for (uint8_t t = 0; t < pending[i].tagCount; t++) {
       String enc = "|" + pending[i].tags[t] + "|";
-      if (u.indexOf(enc) < 0) u += enc;
+      if (u.indexOf(enc) < 0)
+        u += enc;
     }
   }
   return u;
 }
 
-static bool allPendingHaveRequiredTags(const AnswerRule& r) {
-  if (r.requireTagCount == 0) return true;
+static bool allPendingHaveRequiredTags(const AnswerRule &r) {
+  if (r.requireTagCount == 0)
+    return true;
   for (uint8_t i = 0; i < pendingCount; i++) {
     for (uint8_t k = 0; k < r.requireTagCount; k++) {
-      if (!hasTag(pending[i], r.requireTags[k])) return false;
+      if (!hasTag(pending[i], r.requireTags[k]))
+        return false;
     }
   }
   return true;
 }
 
-static bool evalRule(const AnswerRule& r) {
-  if (pendingCount == 0) return false;
+static bool evalRule(const AnswerRule &r) {
+  if (pendingCount == 0)
+    return false;
 
   if (r.type == RuleType::REQUIRE_TAGS) {
     // cards default 1
     uint8_t need = r.cards ? r.cards : 1;
-    if (pendingCount < need) return false;
+    if (pendingCount < need)
+      return false;
 
     String ut = buildUnionTags();
 
     if (r.mode == MatchMode::ANY) {
       for (uint8_t i = 0; i < r.tagCount; i++) {
-        if (unionHasTag(ut, r.tags[i])) return true;
+        if (unionHasTag(ut, r.tags[i]))
+          return true;
       }
       return false;
     } else { // ALL
       for (uint8_t i = 0; i < r.tagCount; i++) {
-        if (!unionHasTag(ut, r.tags[i])) return false;
+        if (!unionHasTag(ut, r.tags[i]))
+          return false;
       }
       return true;
     }
@@ -779,13 +846,16 @@ static bool evalRule(const AnswerRule& r) {
 
   if (r.type == RuleType::SUM) {
     uint8_t need = r.cards ? r.cards : 1;
-    if (pendingCount < need) return false;
+    if (pendingCount < need)
+      return false;
 
-    if (!allPendingHaveRequiredTags(r)) return false;
+    if (!allPendingHaveRequiredTags(r))
+      return false;
 
     int s = 0;
     for (uint8_t i = 0; i < need; i++) {
-      if (pending[i].value < 0) return false;
+      if (pending[i].value < 0)
+        return false;
       s += pending[i].value;
     }
     return s == r.equals;
@@ -794,13 +864,15 @@ static bool evalRule(const AnswerRule& r) {
   return false;
 }
 
-static const String& selectCorrectAudio(const GameDef& g, const Question& q) {
-  if (q.audio.correct.length() > 0) return q.audio.correct;
+static const String &selectCorrectAudio(const GameDef &g, const Question &q) {
+  if (q.audio.correct.length() > 0)
+    return q.audio.correct;
   return g.audio.correct;
 }
 
-static const String& selectWrongAudio(const GameDef& g, const Question& q) {
-  if (q.audio.wrong.length() > 0) return q.audio.wrong;
+static const String &selectWrongAudio(const GameDef &g, const Question &q) {
+  if (q.audio.wrong.length() > 0)
+    return q.audio.wrong;
   return g.audio.wrong;
 }
 
@@ -821,39 +893,38 @@ static void gameEnterIdle() {
   gameState = GameState::IDLE;
   questionIdx = 0;
   doneAnnounced = false;
-  nextCardDueAt = 0; //clearPending() will do this
-  
+  nextCardDueAt = 0; // clearPending() will do this
+
   gameNoticeActive = false;
   replayPromptAfterNotice = false;
   clearPending();
 }
 
-static void gameStartById(const String& id) {
+static void gameStartById(const String &id) {
   // ---------- Stop music / playlist state ----------
-  autoAdvance   = false;
+  autoAdvance = false;
   playlistEnded = false;
   advanceNeeded = false;
-  advanceIndex  = -1;
-  clearActivePlaylist();   // or: activeCount = 0; activeIndex = -1;
+  advanceIndex = -1;
+  clearActivePlaylist(); // or: activeCount = 0; activeIndex = -1;
 
   repeatCount = 0;
   nextCardRepeatCount = 0;
   nextCardDueAt = 0;
   stopToMusicAfterAudio = false;
 
-
   // ---------- Hard reset of game runtime ----------
   gameNoticeActive = false;
   replayPromptAfterNotice = false;
 
-  doneAnnounced = false;   // if you use it
+  doneAnnounced = false; // if you use it
   nextCardDueAt = 0;
   clearPending();
 
   gameModeActive = false;
-  activeGameIdx  = -1;
-  questionIdx    = 0;
-  gameState      = GameState::IDLE;
+  activeGameIdx = -1;
+  questionIdx = 0;
+  gameState = GameState::IDLE;
 
   // ---------- Find game ----------
   int idx = -1;
@@ -872,11 +943,11 @@ static void gameStartById(const String& id) {
 
   // ---------- Activate selected game ----------
   gameModeActive = true;
-  activeGameIdx  = idx;
-  questionIdx    = 0;
+  activeGameIdx = idx;
+  questionIdx = 0;
   clearPending();
 
-  const GameDef& g = games[activeGameIdx];
+  const GameDef &g = games[activeGameIdx];
 
   // ---------- No questions? ----------
   if (g.questionCount == 0) {
@@ -904,13 +975,14 @@ static void gameStartById(const String& id) {
 }
 
 static void gamePlayMusicHint(bool alsoReplayPrompt) {
-  if (!gameModeActive || activeGameIdx < 0) return;
-
-  const GameDef& g = games[activeGameIdx];
-   Serial.print("Play Music Hint 1");
-  if (g.audio.musicHint.length() == 0) 
+  if (!gameModeActive || activeGameIdx < 0)
     return;
-   Serial.print("Play Music Hint 2");
+
+  const GameDef &g = games[activeGameIdx];
+  Serial.print("Play Music Hint 1");
+  if (g.audio.musicHint.length() == 0)
+    return;
+  Serial.print("Play Music Hint 2");
 
   gameNoticeActive = true;
   replayPromptAfterNotice = alsoReplayPrompt;
@@ -918,7 +990,7 @@ static void gamePlayMusicHint(bool alsoReplayPrompt) {
   // Vi bruger FEEDBACK state for at "blokere" scanning mens beskeden spiller,
   // men vi rører ikke pendingCount osv.
   gameState = GameState::FEEDBACK;
- 
+
   playPath(g.audio.musicHint);
 }
 
@@ -926,19 +998,18 @@ static void gamePlayCurrentPrompt() {
   repeatCount = 0;
   nextCardRepeatCount = 0;
   nextCardDueAt = 0;
-    if (activeGameIdx < 0) return;
-  GameDef& g = games[activeGameIdx];
+  if (activeGameIdx < 0)
+    return;
+  GameDef &g = games[activeGameIdx];
   if (questionIdx >= g.questionCount) {
     gameState = GameState::DONE;
     return;
   }
 
-  
-
   clearPending();
   gameState = GameState::PROMPT;
 
-  const Question& q = g.questions[questionIdx];
+  const Question &q = g.questions[questionIdx];
   Serial.print("Prompt q=");
   Serial.println(questionIdx);
 
@@ -946,23 +1017,28 @@ static void gamePlayCurrentPrompt() {
 }
 bool lastAnswerWasCorrect = false;
 
-static void gameOnAnswerScanned(const CardEntry& card) {
+static void gameOnAnswerScanned(const CardEntry &card) {
   // Accept answer cards only while collecting
-  if (!gameModeActive) return;
-  if (gameState != GameState::COLLECT) return;
-  if (activeGameIdx < 0) return;
+  if (!gameModeActive)
+    return;
+  if (gameState != GameState::COLLECT)
+    return;
+  if (activeGameIdx < 0)
+    return;
 
-  GameDef& g = games[activeGameIdx];
-  const Question& q = g.questions[questionIdx];
-  const AnswerRule& r = q.rule;
+  GameDef &g = games[activeGameIdx];
+  const Question &q = g.questions[questionIdx];
+  const AnswerRule &r = q.rule;
 
   uint8_t need = r.cards ? r.cards : 1;
-  if (need > MAX_PENDING) need = MAX_PENDING;
+  if (need > MAX_PENDING)
+    need = MAX_PENDING;
 
-  if (pendingCount >= need) return; // already have enough
+  if (pendingCount >= need)
+    return; // already have enough
 
   // store
-  PendingCard& p = pending[pendingCount];
+  PendingCard &p = pending[pendingCount];
   p.uid = card.uid;
   p.tagCount = 0;
 
@@ -980,50 +1056,52 @@ static void gameOnAnswerScanned(const CardEntry& card) {
   Serial.println(need);
 
   // -------- MULTI-CARD UX FIX --------
-if (need > 1 && pendingCount < need) {
+  if (need > 1 && pendingCount < need) {
 
-  bool possible = true;
+    bool possible = true;
 
-  // --- rule-specific early rejection ---
-  if (r.type == RuleType::REQUIRE_TAGS && r.mode == MatchMode::ALL) {
-    // card must contribute at least one required tag
-    bool contributes = false;
-    for (uint8_t i = 0; i < r.tagCount; i++) {
-      if (hasTag(pending[pendingCount-1], r.tags[i])) {
-        contributes = true;
-        break;
+    // --- rule-specific early rejection ---
+    if (r.type == RuleType::REQUIRE_TAGS && r.mode == MatchMode::ALL) {
+      // card must contribute at least one required tag
+      bool contributes = false;
+      for (uint8_t i = 0; i < r.tagCount; i++) {
+        if (hasTag(pending[pendingCount - 1], r.tags[i])) {
+          contributes = true;
+          break;
+        }
+      }
+      if (!contributes)
+        possible = false;
+    }
+
+    if (r.type == RuleType::SUM) {
+      // must be a valid number card
+      if (pending[pendingCount - 1].value < 0) {
+        possible = false;
       }
     }
-    if (!contributes) possible = false;
-  }
 
-  if (r.type == RuleType::SUM) {
-    // must be a valid number card
-    if (pending[pendingCount-1].value < 0) {
-      possible = false;
+    if (!possible) {
+      // early wrong
+      gameState = GameState::FEEDBACK;
+      playPath(selectWrongAudio(g, q));
+      clearPending();
+      return;
     }
-  }
 
-  if (!possible) {
-    // early wrong
-    gameState = GameState::FEEDBACK;
-    playPath(selectWrongAudio(g, q));
-    clearPending();
+    // valid first card → prompt for next
+    if (g.audio.nextCardForAnswer.length() > 0) {
+      gameState = GameState::FEEDBACK; // temporarily block scans
+      playPath(g.audio.nextCardForAnswer);
+
+      // start timeout for "next card"
+      nextCardDueAt = millis() + g.timing.nextCardRepeatMs;
+      nextCardRepeatCount = 0; // første reminder er lige spillet "nu" (vi
+                               // tæller kun gentagelser via timeout)
+    }
+
     return;
   }
-
-  // valid first card → prompt for next
-  if (g.audio.nextCardForAnswer.length() > 0) {
-  gameState = GameState::FEEDBACK;   // temporarily block scans
-  playPath(g.audio.nextCardForAnswer);
-
-  // start timeout for "next card"
-  nextCardDueAt = millis() + g.timing.nextCardRepeatMs;
-  nextCardRepeatCount = 0; // første reminder er lige spillet "nu" (vi tæller kun gentagelser via timeout)
-}
-
-  return;
-}
 
   if (pendingCount >= need) {
     // Evaluate immediately (no extra state needed)
@@ -1042,13 +1120,16 @@ if (need > 1 && pendingCount < need) {
 }
 
 static void gameTick(bool audioIsPlaying) {
-  if (!gameModeActive) return;
-  if (activeGameIdx < 0) return;
+  if (!gameModeActive)
+    return;
+  if (activeGameIdx < 0)
+    return;
 
-  GameDef& g = games[activeGameIdx];
+  GameDef &g = games[activeGameIdx];
 
   // Only advance when no audio is playing
-  if (audioIsPlaying) return;
+  if (audioIsPlaying)
+    return;
 
   // If we played idleStop and are supposed to return to music afterwards
   if (stopToMusicAfterAudio) {
@@ -1058,17 +1139,20 @@ static void gameTick(bool audioIsPlaying) {
   }
 
   // -------- TIMEOUT HANDLING while COLLECTING --------
-  // We do timeouts only when we are waiting for cards (COLLECT) and no audio is playing.
+  // We do timeouts only when we are waiting for cards (COLLECT) and no audio is
+  // playing.
   if (gameState == GameState::COLLECT && questionIdx < g.questionCount) {
-    const Question& q = g.questions[questionIdx];
+    const Question &q = g.questions[questionIdx];
     uint8_t need = q.rule.cards ? q.rule.cards : 1;
 
     // Ensure sane maxRepeat
     uint8_t maxRepeat = (uint8_t)g.timing.maxRepeat;
-    if (maxRepeat < 1) maxRepeat = 1;
+    if (maxRepeat < 1)
+      maxRepeat = 1;
 
     // nextCard max = maxRepeat-1, but minimum 1
-    uint8_t maxNextCardRepeat = (maxRepeat > 1) ? (uint8_t)(maxRepeat - 1) : (uint8_t)1;
+    uint8_t maxNextCardRepeat =
+        (maxRepeat > 1) ? (uint8_t)(maxRepeat - 1) : (uint8_t)1;
 
     // Arm deadline if not armed yet
     if (nextCardDueAt == 0) {
@@ -1089,23 +1173,22 @@ static void gameTick(bool audioIsPlaying) {
           // Too many "next card" reminders -> repeat the whole question
           repeatCount++;
 
-          clearPending();          // resets pendingCount, nextCardDueAt, nextCardRepeatCount
+          clearPending(); // resets pendingCount, nextCardDueAt,
+                          // nextCardRepeatCount
           gameState = GameState::PROMPT;
           playPath(q.prompt);
 
-          // If the question itself has been repeated too many times -> stop game to music
+          // If the question itself has been repeated too many times -> stop
+          // game to music
           if (repeatCount >= maxRepeat) {
             if (g.audio.idleStop.length() > 0) {
               stopToMusicAfterAudio = true;
               gameState = GameState::FEEDBACK;
 
-
-Serial.print("IdleStop path  (3): ");
-Serial.println(g.audio.idleStop);
-Serial.print("Exists: ");
-Serial.println(SD.exists(g.audio.idleStop) ? "YES" : "NO");
-
-
+              Serial.print("IdleStop path  (3): ");
+              Serial.println(g.audio.idleStop);
+              Serial.print("Exists: ");
+              Serial.println(SD.exists(g.audio.idleStop) ? "YES" : "NO");
 
               playPath(g.audio.idleStop);
             } else {
@@ -1154,92 +1237,96 @@ Serial.println(SD.exists(g.audio.idleStop) ? "YES" : "NO");
 
   // -------- NORMAL STATE MACHINE --------
   switch (gameState) {
-    case GameState::INTRO:
-      // intro finished -> play first question prompt
-      gamePlayCurrentPrompt(); // should set PROMPT state + play prompt + reset repeatCount
-      break;
+  case GameState::INTRO:
+    // intro finished -> play first question prompt
+    gamePlayCurrentPrompt(); // should set PROMPT state + play prompt + reset
+                             // repeatCount
+    break;
 
-    case GameState::PROMPT:
-      // prompt finished -> collect answers
-      gameState = GameState::COLLECT;
-      clearPending();
-      // Do NOT reset repeatCount here; it counts how many times we repeated prompt due to inactivity.
-      Serial.println("Collecting answers...");
-      break;
+  case GameState::PROMPT:
+    // prompt finished -> collect answers
+    gameState = GameState::COLLECT;
+    clearPending();
+    // Do NOT reset repeatCount here; it counts how many times we repeated
+    // prompt due to inactivity.
+    Serial.println("Collecting answers...");
+    break;
 
-    case GameState::FEEDBACK: {
+  case GameState::FEEDBACK: {
 
-      // 1) Notice overlay (music hint etc.)
-      if (gameNoticeActive) {
-        gameNoticeActive = false;
+    // 1) Notice overlay (music hint etc.)
+    if (gameNoticeActive) {
+      gameNoticeActive = false;
 
-        if (replayPromptAfterNotice) {
-          replayPromptAfterNotice = false;
-          gameState = GameState::PROMPT;
-          const Question& q = g.questions[questionIdx];
-          playPath(q.prompt);
-        } else {
-          gameState = GameState::COLLECT;
-        }
-        return;
-      }
-
-      // 2) If we were waiting for more cards, resume collecting after the short prompt ends
-      if (questionIdx < g.questionCount) {
-        const Question& q = g.questions[questionIdx];
-        if (pendingCount > 0 && pendingCount < (q.rule.cards ? q.rule.cards : 1)) {
-          gameState = GameState::COLLECT;
-          return;
-        }
-      }
-
-      // 3) Normal correct/wrong feedback just finished -> advance or repeat
-      const Question& q = g.questions[questionIdx];
-      //bool ok = evalRule(q.rule);
-
-      if (lastAnswerWasCorrect) { //Was set by gameOnAnswerScanned()
-        questionIdx++;
-        clearPending();
-        nextCardDueAt = 0;
-        nextCardRepeatCount = 0;
-        repeatCount = 0; // new question starts fresh
-
-        if (questionIdx >= g.questionCount) {
-          gameState = GameState::DONE;
-          if (g.audio.done.length() > 0) playPath(g.audio.done);
-        } else {
-          gamePlayCurrentPrompt(); // should reset repeatCount for new question
-        }
+      if (replayPromptAfterNotice) {
+        replayPromptAfterNotice = false;
+        gameState = GameState::PROMPT;
+        const Question &q = g.questions[questionIdx];
+        playPath(q.prompt);
       } else {
-        // repeat same question (wrong)
-        clearPending();
-        nextCardDueAt = 0;
-        nextCardRepeatCount = 0;
-        // repeatCount NOT incremented here; it's for inactivity timeouts, not wrong answers
-        gamePlayCurrentPrompt();
+        gameState = GameState::COLLECT;
       }
-      break;
+      return;
     }
 
-    case GameState::DONE:
-      if (!doneAnnounced) {
-        Serial.println("Game done. Waiting for MUSIC button or a new GAME");
-        doneAnnounced = true;
+    // 2) If we were waiting for more cards, resume collecting after the short
+    // prompt ends
+    if (questionIdx < g.questionCount) {
+      const Question &q = g.questions[questionIdx];
+      if (pendingCount > 0 &&
+          pendingCount < (q.rule.cards ? q.rule.cards : 1)) {
+        gameState = GameState::COLLECT;
+        return;
       }
-      // Stay in DONE; selector can restart via RFID handler
-      break;
+    }
 
-    default:
-      break;
+    // 3) Normal correct/wrong feedback just finished -> advance or repeat
+    const Question &q = g.questions[questionIdx];
+    // bool ok = evalRule(q.rule);
+
+    if (lastAnswerWasCorrect) { // Was set by gameOnAnswerScanned()
+      questionIdx++;
+      clearPending();
+      nextCardDueAt = 0;
+      nextCardRepeatCount = 0;
+      repeatCount = 0; // new question starts fresh
+
+      if (questionIdx >= g.questionCount) {
+        gameState = GameState::DONE;
+        if (g.audio.done.length() > 0)
+          playPath(g.audio.done);
+      } else {
+        gamePlayCurrentPrompt(); // should reset repeatCount for new question
+      }
+    } else {
+      // repeat same question (wrong)
+      clearPending();
+      nextCardDueAt = 0;
+      nextCardRepeatCount = 0;
+      // repeatCount NOT incremented here; it's for inactivity timeouts, not
+      // wrong answers
+      gamePlayCurrentPrompt();
+    }
+    break;
+  }
+
+  case GameState::DONE:
+    if (!doneAnnounced) {
+      Serial.println("Game done. Waiting for MUSIC button or a new GAME");
+      doneAnnounced = true;
+    }
+    // Stay in DONE; selector can restart via RFID handler
+    break;
+
+  default:
+    break;
   }
 }
-
-
 
 // ---- JSON loading for games[] ----
 // Call this after SD is ready and settings.json exists.
 // It re-opens settings.json and parses only the "games" array.
-static bool loadGamesJson(const char* jsonPath) {
+static bool loadGamesJson(const char *jsonPath) {
   gameCount = 0;
 
   File f = SD.open(jsonPath, FILE_READ);
@@ -1265,56 +1352,65 @@ static bool loadGamesJson(const char* jsonPath) {
   }
 
   for (JsonObject g : arr) {
-    if (gameCount >= MAX_GAMES) break;
+    if (gameCount >= MAX_GAMES)
+      break;
 
-    const char* id = g["id"] | "";
-    if (strlen(id) == 0) continue;
+    const char *id = g["id"] | "";
+    if (strlen(id) == 0)
+      continue;
 
-    GameDef& gd = games[gameCount];
+    GameDef &gd = games[gameCount];
     gd.id = String(id);
+    const char *titel = g["titel"] | "Ingen titel";
+    gd.titel = String(titel);
     gd.questionCount = 0;
 
     // audio
     JsonObject audio = g["audio"].as<JsonObject>();
     if (!audio.isNull()) {
-      gd.audio.intro   = String((const char*)(audio["intro"]   | ""));
-      gd.audio.correct = String((const char*)(audio["correct"] | ""));
-      gd.audio.wrong   = String((const char*)(audio["wrong"]   | ""));
-      gd.audio.done    = String((const char*)(audio["done"]    | ""));
-      gd.audio.nextCardForAnswer = String((const char*)(audio["nextCardForAnswer"] | ""));
-      gd.audio.musicHint = String((const char*)(audio["musicHint"] | ""));
-      gd.audio.idleStop = String((const char*)(audio["idleStop"] | ""));
+      gd.audio.intro = String((const char *)(audio["intro"] | ""));
+      gd.audio.correct = String((const char *)(audio["correct"] | ""));
+      gd.audio.wrong = String((const char *)(audio["wrong"] | ""));
+      gd.audio.done = String((const char *)(audio["done"] | ""));
+      gd.audio.nextCardForAnswer =
+          String((const char *)(audio["nextCardForAnswer"] | ""));
+      gd.audio.musicHint = String((const char *)(audio["musicHint"] | ""));
+      gd.audio.idleStop = String((const char *)(audio["idleStop"] | ""));
     }
-    Serial.print("Game "); 
+    /*
+    Serial.print("Game ");
     Serial.print(gd.id);
-    Serial.print(" idleStop="); 
+    Serial.print(" idleStop=");
     Serial.println(gd.audio.idleStop);
-    
+    */
+
     JsonObject timing = g["timing"].as<JsonObject>();
     if (!timing.isNull()) {
-      gd.timing.answerTimeoutMs  = (uint32_t)(timing["answerTimeoutMs"]  | 25000);
-      gd.timing.nextCardRepeatMs  = (uint32_t)(timing["nextCardRepeatMs"]  | 18000);
-      gd.timing.maxRepeat  = (uint32_t)(timing["maxRepeat"]  | 3);
-} else {
-      gd.timing.answerTimeoutMs  = 25000;
-      gd.timing.nextCardRepeatMs  = 18000;
-      gd.timing.maxRepeat  = 3;
-}
+      gd.timing.answerTimeoutMs = (uint32_t)(timing["answerTimeoutMs"] | 25000);
+      gd.timing.nextCardRepeatMs =
+          (uint32_t)(timing["nextCardRepeatMs"] | 18000);
+      gd.timing.maxRepeat = (uint32_t)(timing["maxRepeat"] | 3);
+    } else {
+      gd.timing.answerTimeoutMs = 25000;
+      gd.timing.nextCardRepeatMs = 18000;
+      gd.timing.maxRepeat = 3;
+    }
 
     // questions
     JsonArray qs = g["questions"].as<JsonArray>();
     if (!qs.isNull()) {
       for (JsonObject q : qs) {
-        if (gd.questionCount >= MAX_QUESTIONS) break;
+        if (gd.questionCount >= MAX_QUESTIONS)
+          break;
 
-        Question& qq = gd.questions[gd.questionCount];
-        qq.prompt = String((const char*)(q["prompt"] | ""));
+        Question &qq = gd.questions[gd.questionCount];
+        qq.prompt = String((const char *)(q["prompt"] | ""));
 
         // question audio override (optional): audio.correct / audio.wrong
         JsonObject qa = q["audio"].as<JsonObject>();
         if (!qa.isNull()) {
-          qq.audio.correct = String((const char*)(qa["correct"] | ""));
-          qq.audio.wrong   = String((const char*)(qa["wrong"]   | ""));
+          qq.audio.correct = String((const char *)(qa["correct"] | ""));
+          qq.audio.wrong = String((const char *)(qa["wrong"] | ""));
         } else {
           qq.audio.correct = "";
           qq.audio.wrong = "";
@@ -1322,11 +1418,11 @@ static bool loadGamesJson(const char* jsonPath) {
 
         // answer rule
         JsonObject a = q["answer"].as<JsonObject>();
-        AnswerRule& r = qq.rule;
+        AnswerRule &r = qq.rule;
 
         r.cards = (uint8_t)(a["cards"] | 1);
 
-        const char* type = a["type"] | "requireTags";
+        const char *type = a["type"] | "requireTags";
         if (strcmp(type, "requireTags") == 0) {
           r.type = RuleType::REQUIRE_TAGS;
           r.mode = parseMode(a["mode"] | "any");
@@ -1335,12 +1431,12 @@ static bool loadGamesJson(const char* jsonPath) {
           JsonArray tags = a["tags"].as<JsonArray>();
           if (!tags.isNull()) {
             for (JsonVariant tv : tags) {
-              if (r.tagCount >= MAX_RULE_TAGS) break;
-              r.tags[r.tagCount++] = String(tv.as<const char*>());
+              if (r.tagCount >= MAX_RULE_TAGS)
+                break;
+              r.tags[r.tagCount++] = String(tv.as<const char *>());
             }
           }
-        }
-        else if (strcmp(type, "sum") == 0) {
+        } else if (strcmp(type, "sum") == 0) {
           r.type = RuleType::SUM;
           r.equals = (int)(a["equals"] | 0);
 
@@ -1349,12 +1445,13 @@ static bool loadGamesJson(const char* jsonPath) {
           JsonArray req = a["tags"].as<JsonArray>();
           if (!req.isNull()) {
             for (JsonVariant tv : req) {
-              if (r.requireTagCount >= MAX_RULE_TAGS) break;
-              r.requireTags[r.requireTagCount++] = String(tv.as<const char*>());
+              if (r.requireTagCount >= MAX_RULE_TAGS)
+                break;
+              r.requireTags[r.requireTagCount++] =
+                  String(tv.as<const char *>());
             }
           }
-        }
-        else {
+        } else {
           // fallback: treat as requireTags
           r.type = RuleType::REQUIRE_TAGS;
           r.mode = MatchMode::ANY;
@@ -1456,17 +1553,11 @@ static void handleAction(Action a) {
     break;
   case ACT_MODE_MUSIC:
     Serial.println("MODE: MUSIC");
-    gameEnterIdle();  // THIS is your rule: only music button exits game
-    Serial.println("BTN: MODE MUSIC");
+    // Music button pressed, but no music yet selected
+    oledTitle = "";
+    oledArtist = "";
+    gameEnterIdle(); // THIS is your rule: only music button exits game
     break;
-    /*
-  case ACT_MODE_GAME_A:
-    Serial.println("BTN: MODE GAME A");
-    break;
-  case ACT_MODE_GAME_B:
-    Serial.println("BTN: MODE GAME B");
-    break;
-      */
   }
 }
 
@@ -1515,6 +1606,188 @@ static void pollButtons(uint32_t now) {
   }
 }
 
+// Display
+
+U8G2_SH1106_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/U8X8_PIN_NONE);
+
+static void oledInit() {
+  Wire.begin(PIN_OLED_SDA, PIN_OLED_SCL);
+  // Optional: Wire.setClock(400000); // kan sættes senere
+
+  u8g2.begin();
+  u8g2.enableUTF8Print();
+  u8g2.clearBuffer();
+  u8g2.setFont(u8g2_font_6x12_tf);
+  u8g2.drawStr(0, 12, "OLED OK");
+  u8g2.sendBuffer();
+}
+
+void oledShowText(const String &line1) {
+  u8g2.clearBuffer();
+  u8g2.setFont(u8g2_font_6x12_tf);
+
+  u8g2.drawStr(0, 12, line1.c_str());
+
+  u8g2.sendBuffer();
+}
+
+static float clampf(float v, float lo, float hi) {
+  if (v < lo)
+    return lo;
+  if (v > hi)
+    return hi;
+  return v;
+}
+
+// Tegner en bar baseret på currentVolume i intervallet [VOL_MIN..VOL_MAX]
+static void drawVolumeBar(float vol, float volMin, float volMax) {
+  vol = clampf(vol, volMin, volMax);
+
+  const int x = 0;
+  const int y = 52;
+  const int w = 128;
+  const int h = 10;
+
+  u8g2.drawFrame(x, y, w, h);
+
+  // Normaliser til 0..1
+  float t = (vol - volMin) / (volMax - volMin);
+  if (t < 0)
+    t = 0;
+  if (t > 1)
+    t = 1;
+
+  int fillW = (int)((w - 2) * t + 0.5f); // afrunding
+  if (fillW > 0) {
+    u8g2.drawBox(x + 1, y + 1, fillW, h - 2);
+  }
+}
+
+void oledShowStatus(const String &line1, const String &line2, float vol,
+                    float volMax) {
+  u8g2.clearBuffer();
+  u8g2.setFont(u8g2_font_6x12_tf);
+
+  u8g2.drawStr(0, 12, line1.c_str());
+  u8g2.drawStr(0, 28, line2.c_str());
+
+  // Vis vol som procent (giver mening for mennesker)
+  // (volMax=0.9, volMin=0.05)
+  float volMin = VOL_MIN;
+  vol = clampf(vol, volMin, volMax);
+  int pct = (int)(100.0f * (vol - volMin) / (volMax - volMin) + 0.5f);
+
+  char vbuf[16];
+  snprintf(vbuf, sizeof(vbuf), "Vol %d%%", pct);
+  u8g2.drawStr(86, 44, vbuf);
+
+  drawVolumeBar(vol, VOL_MIN, volMax);
+
+  u8g2.sendBuffer();
+}
+
+static void drawMaybeScrollLine(int y, const String& text, uint32_t now)
+{
+  u8g2.setFont(u8g2_font_6x12_tf);
+  int w = u8g2.getStrWidth(text.c_str());
+  const int viewW = 128;
+
+  if (w <= viewW) {
+    u8g2.drawStr(0, y, text.c_str());
+    return;
+  }
+
+  // scroll 25 px/s, med 800ms pause ved start
+  const uint32_t pauseMs = 800;
+  const uint32_t speed = 25; // px/s
+  uint32_t t = now % (pauseMs + (uint32_t)((w - viewW + 20) * 1000 / speed));
+  int offset = 0;
+  if (t > pauseMs) offset = (int)(((t - pauseMs) * speed) / 1000);
+
+  u8g2.drawStr(-offset, y, text.c_str());
+}
+
+static void drawScrollWithPauses(int x, int y, const String& text, uint32_t now)
+{
+  int w = u8g2.getStrWidth(text.c_str());
+  const int viewW = 128;
+
+  if (w <= viewW) {
+    u8g2.drawUTF8(x, y, text.c_str());
+    return;
+  }
+
+  const int maxOffset = w - viewW;
+
+  const uint32_t holdStartMs = 2000;
+  const uint32_t holdEndMs   = 2000;
+  const uint32_t speedPxPerSec = 25;
+
+  const uint32_t scrollMs = (uint32_t)((maxOffset * 1000UL) / speedPxPerSec);
+  const uint32_t cycleMs  = holdStartMs + scrollMs + holdEndMs;
+
+  uint32_t t = now % cycleMs;
+
+  int offset = 0;
+  if (t < holdStartMs) {
+    offset = 0;
+  } else if (t < holdStartMs + scrollMs) {
+    uint32_t tt = t - holdStartMs;
+    offset = (int)((tt * speedPxPerSec) / 1000UL);
+    if (offset > maxOffset) offset = maxOffset;
+  } else {
+    offset = maxOffset;
+  }
+
+  u8g2.drawUTF8(x - offset, y, text.c_str());
+}
+
+
+static uint32_t lastOledMs = 0;
+static String last1, last2, last3;
+static int lastPct = -1;
+
+static void oledDraw3LinesIfChanged(uint32_t now, float currentVol) {
+  // beregn pct
+  const float volMin = VOL_MIN;
+  const float volMax = VOL_MAX;
+  float vol = clampf(currentVol, volMin, volMax);
+  int pct = (int)(100.0f * (vol - volMin) / (volMax - volMin) + 0.5f);
+
+  String l1 = String("Mode: ") + (gameState != GameState::IDLE ? "Game" : "Music");
+  const String &l2 = oledTitle;
+  const String &l3 = oledArtist;  // <-- brug din rigtige linje 3
+
+  // Skal der scrolles?
+  u8g2.setFont(u8g2_font_6x12_tf);
+  bool needScroll = (u8g2.getStrWidth(l3.c_str()) > 128);
+
+  // throttle: scroll kræver hyppigere redraw
+  uint32_t minInterval = needScroll ? 60 : 150;
+  if ((uint32_t)(now - lastOledMs) < minInterval) return;
+
+  // change detection: hvis vi IKKE scroller, så må vi gerne skippe redraw
+  if (!needScroll && l1 == last1 && l2 == last2 && l3 == last3 && pct == lastPct) return;
+
+  lastOledMs = now;
+  last1 = l1; last2 = l2; last3 = l3; lastPct = pct;
+
+  u8g2.clearBuffer();
+  u8g2.setFont(u8g2_font_6x12_tf);
+
+  u8g2.drawUTF8(0, 12, l1.c_str());
+  u8g2.drawUTF8(0, 28, l2.c_str());
+
+  if (needScroll) {
+  drawScrollWithPauses(0, 44, l3, now);
+} else {
+  u8g2.drawUTF8(0, 44, l3.c_str());
+}
+  drawVolumeBar(vol, volMin, volMax);
+  u8g2.sendBuffer();
+}
+
+// End of
 
 void setup() {
   Serial.begin(115200);
@@ -1537,7 +1810,8 @@ void setup() {
   digitalWrite(PIN_LED_CARD, LOW);
 
   Serial.println("Init SD...");
-  while (!SD.begin(PIN_SD_CS, SPI, 8000000)) { // prøv 8MHz; hvis ustabilt: 4000000
+  while (
+      !SD.begin(PIN_SD_CS, SPI, 8000000)) { // prøv 8MHz; hvis ustabilt: 4000000
     Serial.println("SD.begin FAILED, try to remove and reinsert the SD-card");
     digitalWrite(PIN_LED_CARD, HIGH);
     delay(1000);
@@ -1545,14 +1819,10 @@ void setup() {
     delay(5000);
   }
   /*
-  while (!SD.begin(PIN_SD_CS, SPI, 8000000)) { // prøv 8MHz; hvis ustabilt: 4000000
-    Serial.println("SD.begin FAILED");
-    while (true)
-      delay(1000);
+  while (!SD.begin(PIN_SD_CS, SPI, 8000000)) { // prøv 8MHz; hvis ustabilt:
+  4000000 Serial.println("SD.begin FAILED"); while (true) delay(1000);
   }
   */
-
-
 
   Serial.println("SD OK");
 
@@ -1595,17 +1865,41 @@ void setup() {
 
   // Load JSON
   loadCardsJson("/settings.json");
-  loadGamesJson("/settings.json");   // games[]: rules + prompts + audio
-  gameEnterIdle();     
+  loadGamesJson("/settings.json"); // games[]: rules + prompts + audio
+  gameEnterIdle();
+  oledInit();
 
+  //DEBUG Remove when used
+  Serial.printf("Meta entries: %d\n", (int)trackMetaByPath.size());
+  auto it = trackMetaByPath.find(keyOfPath("/audio/hjulene_paa_bus.mp3"));
+if (it != trackMetaByPath.end()) {
+  Serial.println(it->second.title);
+  Serial.println(it->second.artist);
+}
 
 }
 
 void loop() {
+
   uint32_t now = millis();
 
   // 1) Button must run continuesly (no early returns)
   pollButtons(now);
+
+  oledDraw3LinesIfChanged(now, currentVolume);
+  /*
+  // Initialiseres første gang i static storage, og kun her
+  static uint32_t lastOled = 0;
+
+if ((uint32_t)(now - lastOled) > 250) {
+  lastOled = now;
+  oledLine1 = String("Mode: ") + (gameState != GameState::IDLE ? "Game" :
+"Music"); oledShowStatus(oledLine1, oledTitle, currentVolume, VOL_MAX);
+
+  //oledShowText(status);
+
+}
+  */
 
   gameTick(isPlaying && !isPaused);
 
@@ -1658,65 +1952,74 @@ void loop() {
     digitalWrite(PIN_LED_CARD, LOW);
     return;
   }
-  
+
   Serial.print("Current role is: ");
   Serial.println(e->role);
   if (e->role == "game_selector") {
-   Serial.println("GAME SELECT: " + e->gameId);
-    gameStartById(e->gameId);   // always abort current + start selected
+    Serial.println("GAME SELECT: " + e->gameId);
+    oledTitle = e->title;
+    gameStartById(e->gameId); // always abort current + start selected
     return;
   }
 
-if (e->role == "answer") {
-  gameOnAnswerScanned(*e);
-  return;
-}
-
-if (e->role == "music") {
-  if (gameModeActive) {
-    gamePlayMusicHint(true);
+  if (e->role == "answer") {
+    gameOnAnswerScanned(*e);
     return;
   }
 
-  if (e->kind == PK_SINGLE) {
-    autoAdvance = false;
-    playlistEnded = false;
-    String path = e->file;
-    if (!path.startsWith("/"))
-      path = "/" + path;
-
-    // Active playlist = folder for this file (so next/prev is in “same folder”)
-    setActiveFromFolder(dirnameOf(path));
-    // find index in activeTracks
-    activeIndex = -1;
-    for (size_t i = 0; i < activeCount; i++) {
-      if (activeTracks[i] == path) {
-        activeIndex = (int)i;
-        break;
-      }
+  if (e->role == "music") {
+    if (gameModeActive) {
+      gamePlayMusicHint(true);
+      return;
     }
-    if (activeIndex < 0)
-      activeIndex = 0;
 
-    playActiveIndex(activeIndex);
-  } else if (e->kind == PK_ALBUM_FOLDER) {
-    autoAdvance = true;
-    playlistEnded = false;
-    String folder = e->folder;
-    if (!folder.startsWith("/"))
-      folder = "/" + folder;
+    if (e->kind == PK_SINGLE) {
+      autoAdvance = false;
+      playlistEnded = false;
+      String path = e->file;
+      if (!path.startsWith("/"))
+        path = "/" + path;
 
-    setActiveFromFolder(folder);
-    playActiveIndex(0);
-  } else if (e->kind == PK_ALBUM_TRACKS) {
-    autoAdvance = true;
-    playlistEnded = false;
-    setActiveFromTrackPool(e->trackStart, e->trackCount);
-    playActiveIndex(0);
-  } else {
-    Serial.println("Music card missing play info");
+      // Active playlist = folder for this file (so next/prev is in “same
+      // folder”)
+      setActiveFromFolder(dirnameOf(path));
+      // find index in activeTracks
+      activeIndex = -1;
+      for (size_t i = 0; i < activeCount; i++) {
+        if (activeTracks[i] == path) {
+          activeIndex = (int)i;
+          break;
+        }
+      }
+      if (activeIndex < 0)
+        activeIndex = 0;
+
+      oledTitle = "Track: " + e->title;
+      oledArtist = ""; // indtil JSON artist findes
+      playActiveIndex(activeIndex);
+
+    } else if (e->kind == PK_ALBUM_FOLDER) {
+      autoAdvance = true;
+      playlistEnded = false;
+      String folder = e->folder;
+      if (!folder.startsWith("/"))
+        folder = "/" + folder;
+
+      oledTitle = "Track: " + e->title;
+      oledArtist = ""; // indtil JSON artist findes
+      setActiveFromFolder(folder);
+      playActiveIndex(0);
+    } else if (e->kind == PK_ALBUM_TRACKS) {
+      autoAdvance = true;
+      playlistEnded = false;
+      setActiveFromTrackPool(e->trackStart, e->trackCount);
+      oledTitle = "Track: " + e->title;
+      oledArtist = ""; // indtil JSON artist findes
+      playActiveIndex(0);
+    } else {
+      Serial.println("Music card missing play info");
+    }
   }
-}
 
   Serial.print("UID ");
   Serial.print(uid);

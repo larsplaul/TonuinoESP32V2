@@ -5,6 +5,7 @@
       "uid": "CC7B0D05",
       "role": "music",
       "title": "Hjulene på bussen",
+      "artist" : "Minisjang",
       "play": {
         "kind": "single",
         "file": "/audio/hjulene_paa_bus.mp3"
@@ -37,6 +38,7 @@
         "tracks": [
           {
             "title": "Bro bro brille",
+            "artist": "Popsi og Guitar-Krelle",
             "file": "/audio/mix/Bro_bro_brille.mp3"
           },
           {
@@ -45,14 +47,17 @@
           },
           {
             "title": "En Papegøje Fra Amerika",
+            "artist" : "Sanne Salomonsen",
             "file": "/audio/mix/JegErEnPapegøjeFraAmerika.mp3"
           },
           {
             "title": "Jens Hansens Bondegård",
+            "artist" : "Sherif Haps",
             "file": "/audio/mix/JensHansensBondegård.mp3"
           },
           {
             "title": "sø og land",
+            "artist": "Minisjang",
             "file": "/audio/mix/sø_og_land.mp3"
           }
         ]
@@ -80,6 +85,7 @@
   "games": [
     {
       "id": "dyr",
+      "titel": "Find dyr",
       "audio": {
         "intro": "/audio/games/common/introGameGeneral.mp3",
         "correct": "/audio/games/common/correct.mp3",
@@ -101,6 +107,7 @@
     },
     {
       "id": "ven",
+      "titel": "Find venner",
       "audio": {
         "intro": "/audio/games/common/introGameGeneral.mp3",
         "correct": "/audio/games/venner/correct.mp3",
@@ -123,6 +130,7 @@
     },
     {
       "id": "tal",
+      "titel" : "Leg med tal",
       "audio": {
         "intro": "/audio/games/common/introGameGeneral.mp3",
         "correct": "/audio/games/common/correct.mp3",

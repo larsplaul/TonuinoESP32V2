@@ -8,7 +8,17 @@
       "artist" : "Minisjang",
       "play": {
         "kind": "single",
-        "file": "/audio/hjulene_paa_bus.mp3"
+        "file": "/audio/diverse/hjulene på bussen##Minisjang.mp3"
+      }
+    },
+     {
+      "uid": "15130C05",
+      "role": "music",
+      "title": "Bro bro brille",
+      "artist" : "eeeeeee",
+      "play": {
+        "kind": "single",
+        "file": "/audio/mix/Bro_bro_brille.mp3"
       }
     },
     {
@@ -18,6 +28,15 @@
       "play": {
         "kind": "single",
         "file": "/audio/messages/besked.mp3"
+      }
+    },
+    {
+      "uid": "041B1005",
+      "role": "music",
+      "title": "Blandede sange",
+      "play": {
+        "kind": "album",
+        "folder": "/audio/diverse"
       }
     },
     {
@@ -72,14 +91,21 @@
     { "uid": "CA241405", "role": "answer", "tags": ["noels_farfar"]},
     { "uid": "2D351005", "role": "answer", "tags": ["noels_far"]},
     { "uid": "BDCE1405", "role": "answer", "tags": ["noels_mor"]},
-    { "uid": "XXXXXXXXX", "role": "answer", "tags": ["robins_mor"]},
-    { "uid": "XXXXXXXXX", "role": "answer", "tags": ["robins_far"]},
+    { "uid": "15A50F05", "role": "answer", "tags": ["vincent"]},
+    { "uid": "7A641505", "role": "answer", "tags": ["maja"]},
+    { "uid": "242C1005", "role": "answer", "tags": ["mark"]},
+    { "uid": "1D071105", "role": "answer", "tags": ["robin"]},
+    { "uid": "496B1605", "role": "answer", "tags": ["julie"]},
+    { "uid": "27291605", "role": "answer", "tags": ["anders"]},
+    { "uid": "D5751005", "role": "answer", "tags": ["christina"]},
+    { "uid": "9AE30F05", "role": "answer", "tags": ["bille"]},
 
     { "uid": "E2551005", "role": "answer", "tags": ["tal"], "value": 1},
     { "uid": "BC2E1405", "role": "answer", "tags": ["tal"], "value": 2},
     { "uid": "XXXXXXXXX", "role": "answer", "tags": ["tal"], "value": 3 },
     { "uid": "53284104",  "role": "game_selector", "title": "Gæt et dyr", "gameId": "dyr"},
     { "uid": "A4CE0705",  "role": "game_selector", "title": "Gæt en ven", "gameId": "ven"},
+    { "uid": "DDF90F05",  "role": "game_selector", "title": "Gæt en du kender 2", "gameId": "ven2"},
     { "uid": "CC8D0E05",  "role": "game_selector", "title": "Leg med tal", "gameId": "tal"}
   ],
   "games": [
@@ -109,7 +135,7 @@
       "id": "ven",
       "titel": "Find venner",
       "audio": {
-        "intro": "/audio/games/common/introGameGeneral.mp3",
+        "intro": "/audio/games/venner/intro_venner.mp3.mp3",
         "correct": "/audio/games/venner/correct.mp3",
         "nextCardForAnswer" : "/audio/games/common/nextCardForAnswer.mp3",
         "musicHint": "/audio/games/common/musicHint.mp3",
@@ -123,9 +149,52 @@
          "maxRepeat": 3
       },
       "questions": [
-         { "prompt": "/audio/games/venner/find_mormor.mp3","audio":{"correct":"/games/ven/mormorCorrect.mp3","wrong":"/games/ven/mormorwrong.mp3"},"answer": {"type": "requireTags","mode": "any","tags": ["mormor"]}},
-         { "prompt": "/audio/games/venner/find_far.mp3", "answer": {"type": "requireTags", "mode": "any","tags": ["far"]}},
-         { "prompt": "/audio/games/venner/find_far_og_tiger.mp3", "answer": {"type": "requireTags", "mode": "all","tags": ["far","tiger"],"cards": 2}}
+         { "prompt": "/audio/games/venner/find_mormor.mp3","answer": {"type": "requireTags","mode": "any","tags": ["noels_mormor"]}},
+         { "prompt": "/audio/games/venner/find_morfar.mp3","answer": {"type": "requireTags","mode": "any","tags": ["noels_morfar"]}},
+         { "prompt": "/audio/games/venner/find_far.mp3", "answer": {"type": "requireTags", "mode": "any","tags": ["noels_far"]}},
+         { "prompt": "/audio/games/venner/find_mor.mp3", "answer": {"type": "requireTags", "mode": "any","tags": ["noels_mor"]}},
+         { "prompt": "/audio/games/venner/find_farfar.mp3", "answer": {"type": "requireTags", "mode": "any","tags": ["noels_farfar"]}},
+         { "prompt": "/audio/games/venner/find_farmor.mp3", "answer": {"type": "requireTags", "mode": "any","tags": ["noels_farmor"]}},
+         { "prompt": "/audio/games/venner/find_robin.mp3", "answer": {"type": "requireTags", "mode": "any","tags": ["robin"]}},
+         { "prompt": "/audio/games/venner/find_maja.mp3", "answer": {"type": "requireTags", "mode": "any","tags": ["maja"]}},
+         { "prompt": "/audio/games/venner/find_mark.mp3", "answer": {"type": "requireTags", "mode": "any","tags": ["mark"]}},
+         { "prompt": "/audio/games/venner/find_vincent.mp3", "answer": {"type": "requireTags", "mode": "any","tags": ["vincent"]}},
+         { "prompt": "/audio/games/venner/find_julie.mp3", "answer": {"type": "requireTags", "mode": "any","tags": ["julie"]}},
+         { "prompt": "/audio/games/venner/find_anders.mp3", "answer": {"type": "requireTags", "mode": "any","tags": ["anders"]}},
+         { "prompt": "/audio/games/venner/find_bille.mp3", "answer": {"type": "requireTags", "mode": "any","tags": ["bille"]}},
+         { "prompt": "/audio/games/venner/find_christina.mp3", "answer": {"type": "requireTags", "mode": "any","tags": ["christiana"]}}
+      ]
+    },
+    {
+      "id": "ven2",
+      "titel": "Find venner 2",
+      "audio": {
+        "intro": "/audio/games/venner2/intro_venner2.mp3",
+        "correct": "/audio/games/venner/correct.mp3",
+        "nextCardForAnswer" : "/audio/games/common/nextCardForAnswer.mp3",
+        "musicHint": "/audio/games/common/musicHint.mp3",
+        "wrong": "/audio/games/common/wrong.mp3",
+        "done": "/audio/games/common/done.mp3",
+        "idleStop": "/audio/games/common/idleStop.mp3"
+      },
+      "timing": {
+         "answerTimeoutMs": 25000,
+         "nextCardRepeatMs": 18000,
+         "maxRepeat": 3
+      },
+      "questions": [
+
+         { "prompt": "/audio/games/venner2/find_mor_og_far.mp3", "answer": {"type": "requireTags", "mode": "all","tags": ["noels_far","noels_mor"],"cards": 2 }},
+         { "prompt": "/audio/games/venner2/find_mormor_morfar.mp3", "answer": {"type": "requireTags", "mode": "all","tags": ["noels_mormor","noels_morfar"],"cards": 2 }},
+         { "prompt": "/audio/games/venner2/find_farmor_farfar.mp3", "answer": {"type": "requireTags", "mode": "all","tags": ["noels_farmor","noels_farfar"],"cards": 2 }},
+         { "prompt": "/audio/games/venner2/find_julie_christina.mp3", "answer": {"type": "requireTags", "mode": "all","tags": ["julie","christina"],"cards": 2 }},
+         { "prompt": "/audio/games/venner/find_robin.mp3", "answer": {"type": "requireTags", "mode": "any","tags": ["robin"]}},
+         { "prompt": "/audio/games/venner/find_maja.mp3", "answer": {"type": "requireTags", "mode": "any","tags": ["maja"]}},
+         { "prompt": "/audio/games/venner/find_mark.mp3", "answer": {"type": "requireTags", "mode": "any","tags": ["mark"]}},
+         { "prompt": "/audio/games/venner/find_vincent.mp3", "answer": {"type": "requireTags", "mode": "any","tags": ["vincent"]}},
+         { "prompt": "/audio/games/venner/find_anders.mp3", "answer": {"type": "requireTags", "mode": "any","tags": ["anders"]}},
+         { "prompt": "/audio/games/venner/find_bille.mp3", "answer": {"type": "requireTags", "mode": "any","tags": ["bille"]}}
+         
       ]
     },
     {

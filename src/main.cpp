@@ -1,4 +1,3 @@
-#include <Arduino.h>
 #include <Preferences.h>
 #include <SD.h>
 #include <SPI.h>
@@ -67,8 +66,36 @@ struct TrackMeta {
 };
 static std::unordered_map<std::string, TrackMeta> trackMetaByPath;
 
+static std::unordered_map<std::string, String> albumTitleByFolder;
+
 static inline std::string keyOfPath(const String &p) {
   return std::string(p.c_str());
+}
+
+static String normalizeFolder(String f) {
+  f.trim();
+  if (!f.startsWith("/"))
+    f = "/" + f;
+  while (f.indexOf("//") >= 0)
+    f.replace("//", "/");
+  if (f.length() > 1 && f.endsWith("/"))
+    f.remove(f.length() - 1);
+  return f;
+}
+
+static String dirnameOf(const String &fullPath) {
+  int slash = fullPath.lastIndexOf('/');
+  if (slash <= 0)
+    return "/";
+  return fullPath.substring(0, slash);
+}
+
+static String lookupAlbumTitleForTrackPath(const String &trackPath) {
+  String folder = normalizeFolder(dirnameOf(trackPath));
+  auto it = albumTitleByFolder.find(keyOfPath(folder));
+  if (it != albumTitleByFolder.end())
+    return it->second;
+  return "";
 }
 
 // Handle last track for play/pause
@@ -82,29 +109,13 @@ static size_t activeCount = 0;
 static int activeIndex = -1;
 
 // Variables for OLED display
-static String oledLine1;  // Mode
-static String oledTitle;  // song titel or game titel
-static String oledArtist; // Only music
+static String oledLine1; // Mode
+static String oledLine2; // song titel or game titel
+static String oledLine3; // Only music
 
 static String activeTitle[MAX_ACTIVE];
 static String activeArtist[MAX_ACTIVE];
 static String activePlaylistTitle; // til linje 2
-
-static void uiSetNowPlayingFromPath(const String& path)
-{
-  auto it = trackMetaByPath.find(keyOfPath(path));
-  if (it != trackMetaByPath.end()) {
-    const String& t = it->second.title;
-    const String& a = it->second.artist;
-
-    if (t.length() > 0 && a.length() > 0) oledArtist = t + " - " + a;
-    else if (t.length() > 0)              oledArtist = t;
-    else if (a.length() > 0)              oledArtist = a;
-    else                                  oledArtist = "";
-  } else {
-    oledArtist = ""; // ingen metadata -> blank (ingen basename fallback)
-  }
-}
 
 enum Action {
   ACT_PLAY_PAUSE,
@@ -144,6 +155,54 @@ static constexpr size_t BUTTON_COUNT = sizeof(buttons) / sizeof(buttons[0]);
 
 static constexpr uint32_t LONGPRESS_START_MS = 350; // When repeat starts
 static constexpr uint32_t LONGPRESS_REPEAT_MS = 80; // repeat-interval
+
+// LED BLINKING START
+
+static bool ledBlinkActive = false;
+static uint32_t ledBlinkUntil = 0;
+static uint32_t ledBlinkNextToggle = 0;
+static bool ledBlinkLevel = false;
+
+// start blink i durationMs
+static void ledStartBlink(uint32_t now, uint32_t durationMs,
+                          uint32_t periodMs = 150) {
+  ledBlinkActive = true;
+  ledBlinkUntil = now + durationMs;
+  ledBlinkNextToggle = now; // toggle med det samme
+  ledBlinkLevel = true;     // start ON
+  digitalWrite(PIN_LED_CARD, HIGH);
+}
+
+// stop blink og sluk
+static void ledStopBlink() {
+  ledBlinkActive = false;
+  digitalWrite(PIN_LED_CARD, LOW);
+}
+
+// skal kaldes hver loop (eller ofte)
+static void ledTick(uint32_t now, uint32_t periodMs = 150) {
+  if (!ledBlinkActive)
+    return;
+
+  if ((int32_t)(now - ledBlinkUntil) >= 0) {
+    ledStopBlink();
+    return;
+  }
+
+  if ((int32_t)(now - ledBlinkNextToggle) >= 0) {
+    ledBlinkNextToggle = now + (periodMs / 2);
+    ledBlinkLevel = !ledBlinkLevel;
+    digitalWrite(PIN_LED_CARD, ledBlinkLevel ? HIGH : LOW);
+  }
+}
+
+static void ledSetNormal(bool on)
+{
+  if (ledBlinkActive) return;
+  digitalWrite(PIN_LED_CARD, on ? HIGH : LOW);
+}
+
+// LED BLINKING END
 
 // ---------------- RC522 ----------------
 MFRC522 mfrc522(PIN_RC522_CS, PIN_RC522_RST);
@@ -220,6 +279,62 @@ static void clearActivePlaylist() {
   activeIndex = -1;
 }
 
+// Read Song title and artist from file name
+static void parseMetaFromFilename(const String &path, String &titleOut,
+                                  String &artistOut) {
+  titleOut = "";
+  artistOut = "";
+
+  // basename
+  int slash = path.lastIndexOf('/');
+  String base = (slash >= 0) ? path.substring(slash + 1) : path;
+
+  // strip extension
+  int dot = base.lastIndexOf('.');
+  if (dot > 0)
+    base = base.substring(0, dot);
+
+  // split by ##
+  int sep = base.indexOf("##");
+  String t = (sep >= 0) ? base.substring(0, sep) : base;
+  String a = (sep >= 0) ? base.substring(sep + 2) : "";
+
+  t.replace('_', ' ');
+  a.replace('_', ' ');
+  t.trim();
+  a.trim();
+
+  titleOut = t;
+  artistOut = a;
+}
+
+static void uiSetNowPlayingFromPath(const String &path) {
+  // DEBUG - Remove Me
+  Serial.print("UI path:   ");
+  Serial.println(path);
+  // 1) JSON meta først
+  auto it = trackMetaByPath.find(keyOfPath(path));
+  String t, a;
+  if (it != trackMetaByPath.end()) {
+    t = it->second.title;
+    a = it->second.artist;
+  } else {
+    // 2) fallback: filnavn-konvention for album-folder
+    parseMetaFromFilename(path, t, a);
+  }
+
+  if (t.length() > 0 && a.length() > 0)
+    oledLine3 = t + " - " + a;
+  else if (t.length() > 0)
+    oledLine3 = t;
+  else if (a.length() > 0)
+    oledLine3 = a;
+  else
+    oledLine3 = "";
+}
+
+// End of Read Song title and artist from file name
+
 // Sort alphabetically (used for folder scanning only)
 static void sortActivePlaylist() {
   for (size_t i = 0; i + 1 < activeCount; i++) {
@@ -237,13 +352,6 @@ static bool isMp3File(const String &name) {
   String n = name;
   n.toLowerCase();
   return n.endsWith(".mp3");
-}
-
-static String dirnameOf(const String &fullPath) {
-  int slash = fullPath.lastIndexOf('/');
-  if (slash <= 0)
-    return "/";
-  return fullPath.substring(0, slash);
 }
 
 static void setActiveFromFolder(const String &folder) {
@@ -341,9 +449,12 @@ static void playActiveIndex(int idx) {
     idx = (int)activeCount - 1;
 
   activeIndex = idx;
-
   // UI line 3: track title/artist fra JSON (via path)
   uiSetNowPlayingFromPath(activeTracks[activeIndex]);
+
+  // Debug Remove me
+  Serial.print("PLAY path: ");
+  Serial.println(activeTracks[activeIndex]);
 
   playPath(activeTracks[activeIndex]);
 }
@@ -482,7 +593,16 @@ static bool loadCardsJson(const char *jsonPath) {
 
           if (strlen(folder) > 0) {
             ce.kind = PK_ALBUM_FOLDER;
-            ce.folder = String(folder);
+
+            // normaliser og gem folder
+            String f = normalizeFolder(String(folder));
+            ce.folder = f;
+
+            // album lookup: folder -> album title (fra card)
+            // (kun for "album", ikke "playlist")
+            if (strcmp(kind, "album") == 0 || strcmp(kind, "playlist") == 0) {
+              albumTitleByFolder[keyOfPath(f)] = ce.title;
+            }
           } else if (!tracks.isNull()) {
             // tracks[] playlist/album
             uint16_t start = (uint16_t)trackPoolCount;
@@ -509,10 +629,17 @@ static bool loadCardsJson(const char *jsonPath) {
                 continue;
               if (!tfile.startsWith("/"))
                 tfile = "/" + tfile;
+              // Map folder -> title for playlists too (even when play.folder is
+              // missing)
+              if (strcmp(kind, "playlist") == 0) {
+                String fldr = normalizeFolder(dirnameOf(tfile));
+                albumTitleByFolder[keyOfPath(fldr)] =
+                    ce.title; // "/audio/mix" -> "mix"
+              }
 
               if (ttitle.length() > 0 || tartist.length() > 0) {
-                trackMetaByPath[keyOfPath(tfile)] = TrackMeta{ ttitle, tartist };
-              }  
+                trackMetaByPath[keyOfPath(tfile)] = TrackMeta{ttitle, tartist};
+              }
 
               trackPool[trackPoolCount].title = ttitle;
               trackPool[trackPoolCount].artist = tartist;
@@ -762,6 +889,31 @@ struct PendingCard {
 static PendingCard pending[MAX_PENDING];
 static uint8_t pendingCount = 0;
 
+/// @brief Randomize question ordr
+/// @param g Array to sort
+static void shuffleQuestions(GameDef &g) {
+  if (g.questionCount <= 1) return;
+
+  for (int i = g.questionCount - 1; i > 0; i--) {
+    int j = random(i + 1);   // 0..i
+    if (i != j) {
+      Question tmp = g.questions[i];
+      g.questions[i] = g.questions[j];
+      g.questions[j] = tmp;
+    }
+  }
+}
+
+static void uiSetGameProgress(int qIndex0, int total) {
+  if (total <= 0) {
+    oledLine2 = "Spil klar";
+    return;
+  }
+  char buf[32];
+  snprintf(buf, sizeof(buf), "Spg %d/%d", qIndex0 + 1, total);
+  oledLine3 = String(buf);
+}
+
 // Forward declarations (you already have these helpers somewhere)
 static void
 playPath(const String &path); // your existing function that enqueues
@@ -900,7 +1052,28 @@ static void gameEnterIdle() {
   clearPending();
 }
 
-static void gameStartById(const String &id) {
+static void uiSetGameLine3(const GameDef &g, int qIdx, const char *suffix) {
+  char buf[32];
+  snprintf(buf, sizeof(buf), "Spg %d/%d %s", qIdx + 1, g.questionCount, suffix);
+  oledLine3 = String(buf);
+}
+
+static void uiSetCollectLine3(const GameDef &g, int qIdx, int pending,
+                              int needed) {
+  char buf[32];
+  if (needed <= 1) {
+    snprintf(buf, sizeof(buf), "Spg %d/%d - venter", qIdx + 1, g.questionCount);
+  } else {
+    snprintf(buf, sizeof(buf), "Spg %d/%d - %d/%d kort", qIdx + 1,
+             g.questionCount, pending, needed);
+  }
+  oledLine3 = String(buf);
+}
+
+static void gameStartById(const String &id, const String gameTitel) {
+
+  oledLine2 = gameTitel;
+  oledLine3 = "";
   // ---------- Stop music / playlist state ----------
   autoAdvance = false;
   playlistEnded = false;
@@ -944,10 +1117,12 @@ static void gameStartById(const String &id) {
   // ---------- Activate selected game ----------
   gameModeActive = true;
   activeGameIdx = idx;
+  shuffleQuestions(games[activeGameIdx]);
   questionIdx = 0;
   clearPending();
 
   const GameDef &g = games[activeGameIdx];
+  uiSetGameLine3(g, questionIdx, ""); // <-- viser "Spg 1/X"
 
   // ---------- No questions? ----------
   if (g.questionCount == 0) {
@@ -994,10 +1169,14 @@ static void gamePlayMusicHint(bool alsoReplayPrompt) {
   playPath(g.audio.musicHint);
 }
 
+bool lastAnswerWasCorrect = false;
 static void gamePlayCurrentPrompt() {
   repeatCount = 0;
   nextCardRepeatCount = 0;
   nextCardDueAt = 0;
+
+  lastAnswerWasCorrect = false;
+
   if (activeGameIdx < 0)
     return;
   GameDef &g = games[activeGameIdx];
@@ -1015,7 +1194,6 @@ static void gamePlayCurrentPrompt() {
 
   playPath(q.prompt);
 }
-bool lastAnswerWasCorrect = false;
 
 static void gameOnAnswerScanned(const CardEntry &card) {
   // Accept answer cards only while collecting
@@ -1119,7 +1297,13 @@ static void gameOnAnswerScanned(const CardEntry &card) {
   }
 }
 
-static void gameTick(bool audioIsPlaying) {
+// xxxx1
+static bool hasBufferedAnswerUid = false;
+static String bufferedAnswerUid = "";
+static uint32_t bufferedAnswerAt = 0;
+static const uint32_t BUFFER_TTL_MS = 5000; // discard efter 5s
+
+static void gameTick(uint32_t now, bool audioIsPlaying) {
   if (!gameModeActive)
     return;
   if (activeGameIdx < 0)
@@ -1225,7 +1409,6 @@ static void gameTick(bool audioIsPlaying) {
           }
           return;
         }
-
         // Repeat current question prompt
         gameState = GameState::PROMPT;
         playPath(q.prompt);
@@ -1247,9 +1430,26 @@ static void gameTick(bool audioIsPlaying) {
     // prompt finished -> collect answers
     gameState = GameState::COLLECT;
     clearPending();
+
+    if (hasBufferedAnswerUid && (uint32_t)(now - bufferedAnswerAt) < BUFFER_TTL_MS) {
+      const CardEntry *be = findCardByUid(bufferedAnswerUid);
+      hasBufferedAnswerUid = false;
+      bufferedAnswerUid = "";
+      ledStopBlink();
+      if (be && be->role == "answer") {
+        gameOnAnswerScanned(*be);
+      }
+    }
+
     // Do NOT reset repeatCount here; it counts how many times we repeated
     // prompt due to inactivity.
     Serial.println("Collecting answers...");
+    // uiSetGameLine3(g, questionIdx,"Venter");
+    {
+      const Question &q = g.questions[questionIdx];
+      int needed = q.rule.cards ? q.rule.cards : 1;
+      uiSetCollectLine3(g, questionIdx, 0, needed);
+    }
     break;
 
   case GameState::FEEDBACK: {
@@ -1265,6 +1465,9 @@ static void gameTick(bool audioIsPlaying) {
         playPath(q.prompt);
       } else {
         gameState = GameState::COLLECT;
+        const Question &q = g.questions[questionIdx];
+        int needed = q.rule.cards ? q.rule.cards : 1;
+        uiSetCollectLine3(g, questionIdx, pendingCount, needed);
       }
       return;
     }
@@ -1273,9 +1476,11 @@ static void gameTick(bool audioIsPlaying) {
     // prompt ends
     if (questionIdx < g.questionCount) {
       const Question &q = g.questions[questionIdx];
-      if (pendingCount > 0 &&
-          pendingCount < (q.rule.cards ? q.rule.cards : 1)) {
+      int needed = q.rule.cards ? q.rule.cards : 1;
+
+      if (pendingCount > 0 && pendingCount < needed) {
         gameState = GameState::COLLECT;
+        uiSetCollectLine3(g, questionIdx, pendingCount, needed);
         return;
       }
     }
@@ -1286,6 +1491,7 @@ static void gameTick(bool audioIsPlaying) {
 
     if (lastAnswerWasCorrect) { // Was set by gameOnAnswerScanned()
       questionIdx++;
+      uiSetGameLine3(g, questionIdx, "");
       clearPending();
       nextCardDueAt = 0;
       nextCardRepeatCount = 0;
@@ -1293,9 +1499,12 @@ static void gameTick(bool audioIsPlaying) {
 
       if (questionIdx >= g.questionCount) {
         gameState = GameState::DONE;
+        oledLine2 = "";
+        oledLine3 = "Færdig, vælg nyt spil, eller musik";
         if (g.audio.done.length() > 0)
           playPath(g.audio.done);
       } else {
+        uiSetGameLine3(g, questionIdx, "");
         gamePlayCurrentPrompt(); // should reset repeatCount for new question
       }
     } else {
@@ -1315,6 +1524,7 @@ static void gameTick(bool audioIsPlaying) {
       Serial.println("Game done. Waiting for MUSIC button or a new GAME");
       doneAnnounced = true;
     }
+    oledLine3 = "Vælg nyt spil";
     // Stay in DONE; selector can restart via RFID handler
     break;
 
@@ -1503,9 +1713,11 @@ static void handleAction(Action a) {
         }
       } else {
         for (int i = 0; i < 2; i++) {
-          digitalWrite(PIN_LED_CARD, HIGH);
+          //digitalWrite(PIN_LED_CARD, HIGH);
+          ledSetNormal(true);
           delay(60);
-          digitalWrite(PIN_LED_CARD, LOW);
+          //digitalWrite(PIN_LED_CARD, LOW);
+          ledSetNormal(false);
           delay(60);
         }
       }
@@ -1554,8 +1766,8 @@ static void handleAction(Action a) {
   case ACT_MODE_MUSIC:
     Serial.println("MODE: MUSIC");
     // Music button pressed, but no music yet selected
-    oledTitle = "";
-    oledArtist = "";
+    oledLine2 = "";
+    oledLine3 = "";
     gameEnterIdle(); // THIS is your rule: only music button exits game
     break;
   }
@@ -1686,8 +1898,7 @@ void oledShowStatus(const String &line1, const String &line2, float vol,
   u8g2.sendBuffer();
 }
 
-static void drawMaybeScrollLine(int y, const String& text, uint32_t now)
-{
+static void drawMaybeScrollLine(int y, const String &text, uint32_t now) {
   u8g2.setFont(u8g2_font_6x12_tf);
   int w = u8g2.getStrWidth(text.c_str());
   const int viewW = 128;
@@ -1702,13 +1913,14 @@ static void drawMaybeScrollLine(int y, const String& text, uint32_t now)
   const uint32_t speed = 25; // px/s
   uint32_t t = now % (pauseMs + (uint32_t)((w - viewW + 20) * 1000 / speed));
   int offset = 0;
-  if (t > pauseMs) offset = (int)(((t - pauseMs) * speed) / 1000);
+  if (t > pauseMs)
+    offset = (int)(((t - pauseMs) * speed) / 1000);
 
   u8g2.drawStr(-offset, y, text.c_str());
 }
 
-static void drawScrollWithPauses(int x, int y, const String& text, uint32_t now)
-{
+static void drawScrollWithPauses(int x, int y, const String &text,
+                                 uint32_t now) {
   int w = u8g2.getStrWidth(text.c_str());
   const int viewW = 128;
 
@@ -1720,11 +1932,11 @@ static void drawScrollWithPauses(int x, int y, const String& text, uint32_t now)
   const int maxOffset = w - viewW;
 
   const uint32_t holdStartMs = 2000;
-  const uint32_t holdEndMs   = 2000;
+  const uint32_t holdEndMs = 2000;
   const uint32_t speedPxPerSec = 25;
 
   const uint32_t scrollMs = (uint32_t)((maxOffset * 1000UL) / speedPxPerSec);
-  const uint32_t cycleMs  = holdStartMs + scrollMs + holdEndMs;
+  const uint32_t cycleMs = holdStartMs + scrollMs + holdEndMs;
 
   uint32_t t = now % cycleMs;
 
@@ -1734,14 +1946,14 @@ static void drawScrollWithPauses(int x, int y, const String& text, uint32_t now)
   } else if (t < holdStartMs + scrollMs) {
     uint32_t tt = t - holdStartMs;
     offset = (int)((tt * speedPxPerSec) / 1000UL);
-    if (offset > maxOffset) offset = maxOffset;
+    if (offset > maxOffset)
+      offset = maxOffset;
   } else {
     offset = maxOffset;
   }
 
   u8g2.drawUTF8(x - offset, y, text.c_str());
 }
-
 
 static uint32_t lastOledMs = 0;
 static String last1, last2, last3;
@@ -1754,9 +1966,10 @@ static void oledDraw3LinesIfChanged(uint32_t now, float currentVol) {
   float vol = clampf(currentVol, volMin, volMax);
   int pct = (int)(100.0f * (vol - volMin) / (volMax - volMin) + 0.5f);
 
-  String l1 = String("Mode: ") + (gameState != GameState::IDLE ? "Game" : "Music");
-  const String &l2 = oledTitle;
-  const String &l3 = oledArtist;  // <-- brug din rigtige linje 3
+  String l1 =
+      String("Mode: ") + (gameState != GameState::IDLE ? "Game" : "Music");
+  const String &l2 = oledLine2;
+  const String &l3 = oledLine3;
 
   // Skal der scrolles?
   u8g2.setFont(u8g2_font_6x12_tf);
@@ -1764,13 +1977,19 @@ static void oledDraw3LinesIfChanged(uint32_t now, float currentVol) {
 
   // throttle: scroll kræver hyppigere redraw
   uint32_t minInterval = needScroll ? 60 : 150;
-  if ((uint32_t)(now - lastOledMs) < minInterval) return;
+  if ((uint32_t)(now - lastOledMs) < minInterval)
+    return;
 
   // change detection: hvis vi IKKE scroller, så må vi gerne skippe redraw
-  if (!needScroll && l1 == last1 && l2 == last2 && l3 == last3 && pct == lastPct) return;
+  if (!needScroll && l1 == last1 && l2 == last2 && l3 == last3 &&
+      pct == lastPct)
+    return;
 
   lastOledMs = now;
-  last1 = l1; last2 = l2; last3 = l3; lastPct = pct;
+  last1 = l1;
+  last2 = l2;
+  last3 = l3;
+  lastPct = pct;
 
   u8g2.clearBuffer();
   u8g2.setFont(u8g2_font_6x12_tf);
@@ -1779,10 +1998,10 @@ static void oledDraw3LinesIfChanged(uint32_t now, float currentVol) {
   u8g2.drawUTF8(0, 28, l2.c_str());
 
   if (needScroll) {
-  drawScrollWithPauses(0, 44, l3, now);
-} else {
-  u8g2.drawUTF8(0, 44, l3.c_str());
-}
+    drawScrollWithPauses(0, 44, l3, now);
+  } else {
+    u8g2.drawUTF8(0, 44, l3.c_str());
+  }
   drawVolumeBar(vol, volMin, volMax);
   u8g2.sendBuffer();
 }
@@ -1792,7 +2011,7 @@ static void oledDraw3LinesIfChanged(uint32_t now, float currentVol) {
 void setup() {
   Serial.begin(115200);
   delay(200);
-
+  randomSeed(esp_random());
   // CS pins stabile
   pinMode(PIN_SD_CS, OUTPUT);
   digitalWrite(PIN_SD_CS, HIGH);
@@ -1807,7 +2026,8 @@ void setup() {
   }
 
   pinMode(PIN_LED_CARD, OUTPUT);
-  digitalWrite(PIN_LED_CARD, LOW);
+  //digitalWrite(PIN_LED_CARD, LOW);
+  ledSetNormal(false);
 
   Serial.println("Init SD...");
   while (
@@ -1869,39 +2089,26 @@ void setup() {
   gameEnterIdle();
   oledInit();
 
-  //DEBUG Remove when used
+  // DEBUG Remove when used
   Serial.printf("Meta entries: %d\n", (int)trackMetaByPath.size());
   auto it = trackMetaByPath.find(keyOfPath("/audio/hjulene_paa_bus.mp3"));
-if (it != trackMetaByPath.end()) {
-  Serial.println(it->second.title);
-  Serial.println(it->second.artist);
-}
-
+  if (it != trackMetaByPath.end()) {
+    Serial.println(it->second.title);
+    Serial.println(it->second.artist);
+  }
 }
 
 void loop() {
 
   uint32_t now = millis();
-
+  ledTick(now);
   // 1) Button must run continuesly (no early returns)
   pollButtons(now);
 
   oledDraw3LinesIfChanged(now, currentVolume);
-  /*
-  // Initialiseres første gang i static storage, og kun her
-  static uint32_t lastOled = 0;
 
-if ((uint32_t)(now - lastOled) > 250) {
-  lastOled = now;
-  oledLine1 = String("Mode: ") + (gameState != GameState::IDLE ? "Game" :
-"Music"); oledShowStatus(oledLine1, oledTitle, currentVolume, VOL_MAX);
-
-  //oledShowText(status);
-
-}
-  */
-
-  gameTick(isPlaying && !isPaused);
+  static uint32_t lastPoll = 0;
+  gameTick(lastPoll, isPlaying && !isPaused);
 
   // Handle auto-advance from audioTask
   if (!gameModeActive && advanceNeeded) {
@@ -1915,114 +2122,142 @@ if ((uint32_t)(now - lastOled) > 250) {
 
   maybeSaveVolume(now);
 
+  /*
   // 2) RFID poll - Only each 25 ms
   static uint32_t lastPoll = 0;
+
   if (now - lastPoll < 25) {
     return; // OK to return here, since buttons are already scanned above
   }
-  lastPoll = now;
+    */
+  // 2) RFID poll - Only each 25 ms
 
-  // Make sure SD is not choosen , while we communicate with RC522
-  digitalWrite(PIN_SD_CS, HIGH);
+  if ((uint32_t)(now - lastPoll) >= 25) {
 
-  // If no new card -> turn off LED and leave
-  if (!mfrc522.PICC_IsNewCardPresent()) {
-    digitalWrite(PIN_LED_CARD, LOW);
-    return;
-  }
+    lastPoll = now;
 
-  // New card detected -> LED on instantly
-  digitalWrite(PIN_LED_CARD, HIGH);
+    // Make sure SD is not choosen , while we communicate with RC522
+    digitalWrite(PIN_SD_CS, HIGH);
 
-  if (!mfrc522.PICC_ReadCardSerial()) {
-    // Card was detected, buth could not be read – Turn off LED again
-    digitalWrite(PIN_LED_CARD, LOW);
-    return;
-  }
-
-  String uid = uidToHexUpper(mfrc522.uid);
-
-  mfrc522.PICC_HaltA();
-  mfrc522.PCD_StopCrypto1();
-
-  const CardEntry *e = findCardByUid(uid);
-  if (!e) {
-    Serial.print("Unknown UID: ");
-    Serial.println(uid);
-    digitalWrite(PIN_LED_CARD, LOW);
-    return;
-  }
-
-  Serial.print("Current role is: ");
-  Serial.println(e->role);
-  if (e->role == "game_selector") {
-    Serial.println("GAME SELECT: " + e->gameId);
-    oledTitle = e->title;
-    gameStartById(e->gameId); // always abort current + start selected
-    return;
-  }
-
-  if (e->role == "answer") {
-    gameOnAnswerScanned(*e);
-    return;
-  }
-
-  if (e->role == "music") {
-    if (gameModeActive) {
-      gamePlayMusicHint(true);
+    // If no new card -> turn off LED and leave
+    if (!mfrc522.PICC_IsNewCardPresent()) {
+      //digitalWrite(PIN_LED_CARD, LOW);
+      ledSetNormal(false);
       return;
     }
 
-    if (e->kind == PK_SINGLE) {
-      autoAdvance = false;
-      playlistEnded = false;
-      String path = e->file;
-      if (!path.startsWith("/"))
-        path = "/" + path;
+    // New card detected -> LED on instantly
+    //digitalWrite(PIN_LED_CARD, HIGH);
+    ledSetNormal(true);
 
-      // Active playlist = folder for this file (so next/prev is in “same
-      // folder”)
-      setActiveFromFolder(dirnameOf(path));
-      // find index in activeTracks
-      activeIndex = -1;
-      for (size_t i = 0; i < activeCount; i++) {
-        if (activeTracks[i] == path) {
-          activeIndex = (int)i;
-          break;
-        }
-      }
-      if (activeIndex < 0)
-        activeIndex = 0;
-
-      oledTitle = "Track: " + e->title;
-      oledArtist = ""; // indtil JSON artist findes
-      playActiveIndex(activeIndex);
-
-    } else if (e->kind == PK_ALBUM_FOLDER) {
-      autoAdvance = true;
-      playlistEnded = false;
-      String folder = e->folder;
-      if (!folder.startsWith("/"))
-        folder = "/" + folder;
-
-      oledTitle = "Track: " + e->title;
-      oledArtist = ""; // indtil JSON artist findes
-      setActiveFromFolder(folder);
-      playActiveIndex(0);
-    } else if (e->kind == PK_ALBUM_TRACKS) {
-      autoAdvance = true;
-      playlistEnded = false;
-      setActiveFromTrackPool(e->trackStart, e->trackCount);
-      oledTitle = "Track: " + e->title;
-      oledArtist = ""; // indtil JSON artist findes
-      playActiveIndex(0);
-    } else {
-      Serial.println("Music card missing play info");
+    if (!mfrc522.PICC_ReadCardSerial()) {
+      // Card was detected, buth could not be read – Turn off LED again
+      //digitalWrite(PIN_LED_CARD, LOW);
+      ledSetNormal(false);
+      return;
     }
-  }
 
-  Serial.print("UID ");
-  Serial.print(uid);
+    String uid = uidToHexUpper(mfrc522.uid);
+
+    mfrc522.PICC_HaltA();
+    mfrc522.PCD_StopCrypto1();
+
+    const CardEntry *e = findCardByUid(uid);
+    if (!e) {
+      Serial.print("Unknown UID: ");
+      Serial.println(uid);
+      ledSetNormal(false);
+      //digitalWrite(PIN_LED_CARD, LOW);
+      return;
+    }
+
+    Serial.print("Current role is: ");
+    Serial.println(e->role);
+    if (e->role == "game_selector") {
+      Serial.println("GAME SELECT: " + e->gameId);
+
+      gameStartById(e->gameId,
+                    e->title); // always abort current + start selected
+      return;
+    }
+
+    if (e->role == "answer") {
+      // Hvis vi IKKE er klar til at modtage svar endnu (prompt/feedback
+      // spiller),
+      // så buffer UID så det tæller når vi går i COLLECT.
+      if (!gameModeActive || gameState != GameState::COLLECT) {
+        bufferedAnswerUid = uid;
+        bufferedAnswerAt = now;
+        hasBufferedAnswerUid = true;
+        ledStartBlink(now, 1000);
+        return;
+      }
+      gameOnAnswerScanned(*e);
+      return;
+    }
+
+    if (e->role == "music") {
+      if (gameModeActive) {
+        gamePlayMusicHint(true);
+        return;
+      }
+
+      if (e->kind == PK_SINGLE) {
+        autoAdvance = false;
+        playlistEnded = false;
+
+        String path = e->file;
+        if (!path.startsWith("/"))
+          path = "/" + path;
+
+        // Byg active-liste for next/prev i samme folder
+        setActiveFromFolder(dirnameOf(path));
+
+        // Find index i activeTracks hvis muligt (kun til navigation)
+        int found = -1;
+        for (size_t i = 0; i < activeCount; i++) {
+          if (activeTracks[i] == path) {
+            found = (int)i;
+            break;
+          }
+        }
+        if (found >= 0)
+          activeIndex = found;
+        else
+          activeIndex = 0; // fallback, men afspilning styres stadig af 'path'
+        oledLine2 = lookupAlbumTitleForTrackPath(path);
+        // if (oledLine2.length() == 0) oledLine2 = e->title; // fallback
+        oledLine3 = "";
+        uiSetNowPlayingFromPath(path);
+        // AFSPlIL ALTID DEN VALGTE FIL (ikke activeTracks[activeIndex])
+        playPath(path);
+        return;
+      } else if (e->kind == PK_ALBUM_FOLDER) {
+        autoAdvance = true;
+        playlistEnded = false;
+        String folder = e->folder;
+        if (!folder.startsWith("/"))
+          folder = "/" + folder;
+
+        oledLine2 = "Track: " + e->title;
+        oledLine3 = ""; // indtil JSON artist findes
+        setActiveFromFolder(folder);
+        playActiveIndex(0);
+      } else if (e->kind == PK_ALBUM_TRACKS) {
+        autoAdvance = true;
+        playlistEnded = false;
+        setActiveFromTrackPool(e->trackStart, e->trackCount);
+        oledLine2 = "Track: " + e->title;
+        oledLine3 = ""; // indtil JSON artist findes
+        playActiveIndex(0);
+      } else {
+        Serial.println("Music card missing play info");
+      }
+    }
+
+    Serial.print("UID ");
+    Serial.print(uid);
+  }
 
   Serial.print("activeCount: ");
   Serial.print(activeCount);
@@ -2031,5 +2266,6 @@ if ((uint32_t)(now - lastOled) > 250) {
   Serial.print("activeTracks[0]: ");
   Serial.print(activeTracks[0]);
   // Turn off LED after play was queded
-  digitalWrite(PIN_LED_CARD, LOW);
+  //digitalWrite(PIN_LED_CARD, LOW);
+  ledSetNormal(false);
 }

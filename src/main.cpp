@@ -196,9 +196,9 @@ static void ledTick(uint32_t now, uint32_t periodMs = 150) {
   }
 }
 
-static void ledSetNormal(bool on)
-{
-  if (ledBlinkActive) return;
+static void ledSetNormal(bool on) {
+  if (ledBlinkActive)
+    return;
   digitalWrite(PIN_LED_CARD, on ? HIGH : LOW);
 }
 
@@ -211,6 +211,84 @@ MFRC522 mfrc522(PIN_RC522_CS, PIN_RC522_RST);
 AudioGeneratorMP3 *mp3 = nullptr;
 AudioFileSourceSD *file = nullptr;
 AudioOutputI2S *out = nullptr;
+
+// Parent Control
+
+struct UiMessages {
+  String antiRepeatWarning;
+  String antiRepeatEnabled;
+  String antiRepeatDisabled;
+
+  String volumeLockOn;
+  String volumeLockOff;
+};
+
+static UiMessages uiMessages;
+
+static bool parentalAntiRepeatEnabled = false;
+static String lastStartedPath = "";
+static uint8_t sameTrackStreak =1; // 0,1,2,... (konsekutive gange samme track startes)
+
+static bool volumeLocked = false;
+static float lockedVolume = 0.0f;
+
+static bool volumeDirty = false;
+static uint8_t lastVolumeChangeAt = 0;
+
+
+static float getEffectiveVolume() {
+  return volumeLocked ? lockedVolume : currentVolume;
+}
+
+static float clampf(float v, float lo, float hi) {
+  if (v < lo)
+    return lo;
+  if (v > hi)
+    return hi;
+  return v;
+}
+
+static void setVolume(float v) {
+  v = clampf(v, VOL_MIN, VOL_MAX);
+
+  if (volumeLocked) {
+    lockedVolume = v;
+  } else {
+    currentVolume = v;
+  }
+
+  // hvis du har noget "volumeDirty" / lastChanged timestamp, sæt det her
+  volumeDirty = true;
+  lastVolumeChangeAt = millis();
+}
+
+static bool antiRepeatBlocksThisStart(const String &path) {
+  if (!parentalAntiRepeatEnabled)
+    return false;
+
+  // Hvis den samme track startes igen
+  if (path == lastStartedPath) {
+    // sameTrackStreak: 1 = anden gang, 2 = tredje gang, ...
+    if (sameTrackStreak >= 2) {
+      return true; // blokér 3. gang (eller mere)
+    }
+  }
+  return false;
+}
+
+static void antiRepeatOnTrackStart(const String &path) {
+  if (path == lastStartedPath) {
+    if (sameTrackStreak < 255)
+      sameTrackStreak++;
+  } else {
+    lastStartedPath = path;
+    sameTrackStreak = 1;
+  }
+}
+
+
+
+// End of Parent Control
 
 // Card tracking
 enum PlayKind : uint8_t {
@@ -266,6 +344,9 @@ struct CardEntry {
   // Optional numeric value for sum games (role=="answer" with tag "tal" etc.)
   // Use -1 when not present.
   int value = -1;
+
+  // ---------------- PARENT / ACTION ----------------
+  String action;
 };
 
 static constexpr size_t MAX_CARDS = 80;
@@ -443,20 +524,29 @@ static void playPath(const String &path) {
 static void playActiveIndex(int idx) {
   if (activeCount == 0)
     return;
+
   if (idx < 0)
     idx = 0;
   if (idx >= (int)activeCount)
     idx = (int)activeCount - 1;
 
+  String path = activeTracks[idx];
+
+  // Anti-repeat gate (valgfrit: kun i music mode)
+  if (antiRepeatBlocksThisStart(path)) {
+    if (uiMessages.antiRepeatWarning.length() > 0) {
+      playPath(uiMessages.antiRepeatWarning);
+    }
+    return;
+  }
+
+  // Commit chosen index
   activeIndex = idx;
-  // UI line 3: track title/artist fra JSON (via path)
-  uiSetNowPlayingFromPath(activeTracks[activeIndex]);
 
-  // Debug Remove me
-  Serial.print("PLAY path: ");
-  Serial.println(activeTracks[activeIndex]);
-
-  playPath(activeTracks[activeIndex]);
+  // Update streak + UI + play
+  antiRepeatOnTrackStart(path);
+  uiSetNowPlayingFromPath(path);
+  playPath(path);
 }
 
 // End of Track info helpers
@@ -470,6 +560,16 @@ static String uidToHexUpper(const MFRC522::Uid &u) {
   }
   s.toUpperCase();
   return s;
+}
+
+static void playTrackDirect(const String& path) {
+  if (antiRepeatBlocksThisStart(path)) {
+    if (uiMessages.antiRepeatWarning.length() > 0) playPath(uiMessages.antiRepeatWarning);
+    return;
+  }
+  antiRepeatOnTrackStart(path);
+  uiSetNowPlayingFromPath(path);
+  playPath(path);
 }
 
 static const CardEntry *findCardByUid(const String &uid) {
@@ -503,6 +603,17 @@ static bool loadCardsJson(const char *jsonPath) {
     return false;
   }
 
+  JsonObject msgs = doc["messages"].as<JsonObject>();
+  if (!msgs.isNull()) {
+    uiMessages.antiRepeatWarning = String((const char *)(msgs["anti_repeat_warning"] | ""));
+    uiMessages.antiRepeatEnabled = String((const char *)(msgs["anti_repeat_enabled"] | ""));
+    uiMessages.antiRepeatDisabled = String((const char *)(msgs["anti_repeat_disabled"] | ""));
+
+    uiMessages.volumeLockOn  = String((const char*)(msgs["volume_lock_on"]  | ""));
+    uiMessages.volumeLockOff = String((const char*)(msgs["volume_lock_off"] | ""));
+
+  }
+
   JsonArray arr = doc["cards"].as<JsonArray>();
   if (arr.isNull()) {
     Serial.println("JSON missing 'cards' array");
@@ -517,6 +628,7 @@ static bool loadCardsJson(const char *jsonPath) {
     const char *role = c["role"] | "";
     const char *title = c["title"] | "";
     const char *artist = c["artist"] | "---";
+    const char* action = c["action"] | "";
 
     String suid(uid);
     suid.toUpperCase();
@@ -529,6 +641,8 @@ static bool loadCardsJson(const char *jsonPath) {
     ce.role = String(role);
     ce.title = String(title);
     ce.artist = String(artist);
+    ce.action = String(action);
+
 
     // -------- defaults (important!) --------
     ce.gameId = "";
@@ -777,18 +891,20 @@ static void maybeSaveVolume(uint32_t now) {
   if (now - volLastChangedAt < VOL_SAVE_DELAY_MS)
     return;
 
-  int v = (int)lroundf(currentVolume * 100.0f);
-  if (v < 0)
-    v = 0;
-  if (v > 100)
-    v = 100;
+  float eff = getEffectiveVolume();
+  int v = (int)lroundf(eff * 100.0f);
+  if (v < 0) v = 0;
+  if (v > 100) v = 100;
 
   prefs.putInt(PREF_KEY_VOL, v);
   volDirty = false;
 
   Serial.print("Saved volume: ");
   Serial.println(v);
+  Serial.print(volumeLocked ? " (locked)" : " (free)");
+Serial.println();
 }
+
 
 // ================= GAME ENGINE START =================
 
@@ -892,10 +1008,11 @@ static uint8_t pendingCount = 0;
 /// @brief Randomize question ordr
 /// @param g Array to sort
 static void shuffleQuestions(GameDef &g) {
-  if (g.questionCount <= 1) return;
+  if (g.questionCount <= 1)
+    return;
 
   for (int i = g.questionCount - 1; i > 0; i--) {
-    int j = random(i + 1);   // 0..i
+    int j = random(i + 1); // 0..i
     if (i != j) {
       Question tmp = g.questions[i];
       g.questions[i] = g.questions[j];
@@ -1431,7 +1548,8 @@ static void gameTick(uint32_t now, bool audioIsPlaying) {
     gameState = GameState::COLLECT;
     clearPending();
 
-    if (hasBufferedAnswerUid && (uint32_t)(now - bufferedAnswerAt) < BUFFER_TTL_MS) {
+    if (hasBufferedAnswerUid &&
+        (uint32_t)(now - bufferedAnswerAt) < BUFFER_TTL_MS) {
       const CardEntry *be = findCardByUid(bufferedAnswerUid);
       hasBufferedAnswerUid = false;
       bufferedAnswerUid = "";
@@ -1713,10 +1831,10 @@ static void handleAction(Action a) {
         }
       } else {
         for (int i = 0; i < 2; i++) {
-          //digitalWrite(PIN_LED_CARD, HIGH);
+          // digitalWrite(PIN_LED_CARD, HIGH);
           ledSetNormal(true);
           delay(60);
-          //digitalWrite(PIN_LED_CARD, LOW);
+          // digitalWrite(PIN_LED_CARD, LOW);
           ledSetNormal(false);
           delay(60);
         }
@@ -1756,12 +1874,16 @@ static void handleAction(Action a) {
     Serial.println("BTN: PREV");
     break;
   case ACT_VOL_UP:
-    changeVolume(+VOL_STEP);
-    Serial.println("BTN: VOL UP");
+    if (!volumeLocked) {
+      changeVolume(+VOL_STEP);
+      Serial.println("BTN: VOL UP");
+    }
     break;
   case ACT_VOL_DOWN:
-    changeVolume(-VOL_STEP);
-    Serial.println("BTN: VOL DOWN");
+    if (!volumeLocked) {
+      changeVolume(-VOL_STEP);
+       Serial.println("BTN: VOL DOWN");
+    }
     break;
   case ACT_MODE_MUSIC:
     Serial.println("MODE: MUSIC");
@@ -1843,13 +1965,6 @@ void oledShowText(const String &line1) {
   u8g2.sendBuffer();
 }
 
-static float clampf(float v, float lo, float hi) {
-  if (v < lo)
-    return lo;
-  if (v > hi)
-    return hi;
-  return v;
-}
 
 // Tegner en bar baseret på currentVolume i intervallet [VOL_MIN..VOL_MAX]
 static void drawVolumeBar(float vol, float volMin, float volMax) {
@@ -1919,6 +2034,7 @@ static void drawMaybeScrollLine(int y, const String &text, uint32_t now) {
   u8g2.drawStr(-offset, y, text.c_str());
 }
 
+/*
 static void drawScrollWithPauses(int x, int y, const String &text,
                                  uint32_t now) {
   int w = u8g2.getStrWidth(text.c_str());
@@ -1954,47 +2070,141 @@ static void drawScrollWithPauses(int x, int y, const String &text,
 
   u8g2.drawUTF8(x - offset, y, text.c_str());
 }
+*/
+
+static void drawScrollWithPauses(int x, int y, const String &text, uint32_t now)
+{
+  const int viewW = 120;           // samme som du fandt virker
+  const uint32_t pauseMs = 1400;    // pause i enderne
+  const uint32_t stepMs  = 35;     // ms pr pixel (lavere = hurtigere)
+
+  int w = u8g2.getStrWidth(text.c_str());
+  if (w <= viewW) {
+    u8g2.drawUTF8(x, y, text.c_str());
+    return;
+  }
+
+  static String lastText = "";
+  static int offset = 0;
+  static uint32_t lastStepAt = 0;
+  static uint32_t pauseUntil = 0;
+
+  // dir: +1 = mod venstre (offset øges), -1 = mod højre (offset mindskes)
+  static int8_t dir = +1;
+  static bool paused = true;
+
+  // reset hvis teksten ændres
+  if (text != lastText) {
+    lastText = text;
+    offset = 0;
+    dir = +1;
+    paused = true;
+    pauseUntil = now + pauseMs;   // start med pause ved start
+    lastStepAt = now;
+  }
+
+  const int maxOffset = w - viewW;
+
+  if (paused) {
+    if ((int32_t)(now - pauseUntil) >= 0) {
+      paused = false;
+      lastStepAt = now;
+    }
+  } else {
+    if ((int32_t)(now - lastStepAt) >= (int32_t)stepMs) {
+      int steps = (now - lastStepAt) / stepMs;
+      lastStepAt += steps * stepMs;
+
+      offset += dir * steps;
+
+      if (offset <= 0) {
+        offset = 0;
+        paused = true;
+        pauseUntil = now + pauseMs;  // pause ved start
+        dir = +1;                    // vend: scroll mod venstre
+      } else if (offset >= maxOffset) {
+        offset = maxOffset;
+        paused = true;
+        pauseUntil = now + pauseMs;  // pause ved slut
+        dir = -1;                    // vend: scroll mod højre
+      }
+    }
+  }
+
+  u8g2.drawUTF8(x - offset, y, text.c_str());
+}
+
+
+
+static void drawLockIcon(uint8_t x, uint8_t y)
+{
+  // bøjle
+  u8g2.drawFrame(x + 2, y, 4, 4);
+  // krop
+  u8g2.drawBox(x, y + 4, 8, 6);
+  // hul
+  u8g2.drawBox(x + 3, y + 6, 2, 2);
+}
+
+static void drawNoRepeatIcon(uint8_t x, uint8_t y)
+{
+  // En lille cirkel som "repeat"
+  u8g2.drawCircle(x + 5, y + 5, 4);
+
+  // "pil-hoved" (lille trekant-ish)
+  u8g2.drawLine(x + 6, y + 1, x + 9, y + 1);
+  u8g2.drawLine(x + 9, y + 1, x + 8, y + 0);
+  u8g2.drawLine(x + 9, y + 1, x + 8, y + 2);
+
+  // forbudstreg
+  u8g2.drawLine(x + 1, y + 9, x + 9, y + 1);
+}
+
 
 static uint32_t lastOledMs = 0;
 static String last1, last2, last3;
 static int lastPct = -1;
+static bool lastLocked = false;
+static bool lastAntiRepeat = false;
 
 static void oledDraw3LinesIfChanged(uint32_t now, float currentVol) {
-  // beregn pct
+  if ((uint32_t)(now - lastOledMs) < 100) return;
+
   const float volMin = VOL_MIN;
   const float volMax = VOL_MAX;
   float vol = clampf(currentVol, volMin, volMax);
   int pct = (int)(100.0f * (vol - volMin) / (volMax - volMin) + 0.5f);
 
-  String l1 =
-      String("Mode: ") + (gameState != GameState::IDLE ? "Game" : "Music");
+  String l1 = String("Mode: ") + (gameState != GameState::IDLE ? "Game" : "Music");
   const String &l2 = oledLine2;
   const String &l3 = oledLine3;
 
-  // Skal der scrolles?
+  // VIGTIGT: needScroll skal beregnes før change detection
+  // (vi bruger den aktuelle font, så sørg for at font er sat inden getStrWidth)
   u8g2.setFont(u8g2_font_6x12_tf);
-  bool needScroll = (u8g2.getStrWidth(l3.c_str()) > 128);
+  const int viewW = 120; // = 128;
+  bool needScroll = (u8g2.getStrWidth(l3.c_str()) > viewW);
 
-  // throttle: scroll kræver hyppigere redraw
-  uint32_t minInterval = needScroll ? 60 : 150;
-  if ((uint32_t)(now - lastOledMs) < minInterval)
+  // Change detection:    hvis der skal scrolles, må vi IKKE returnere,
+  // ellers får vi aldrig animationen.
+  if (!needScroll &&
+      l1 == last1 && l2 == last2 && l3 == last3 &&
+      pct == lastPct &&
+      volumeLocked == lastLocked &&
+      parentalAntiRepeatEnabled == lastAntiRepeat) {
     return;
-
-  // change detection: hvis vi IKKE scroller, så må vi gerne skippe redraw
-  if (!needScroll && l1 == last1 && l2 == last2 && l3 == last3 &&
-      pct == lastPct)
-    return;
+  }
 
   lastOledMs = now;
-  last1 = l1;
-  last2 = l2;
-  last3 = l3;
+  last1 = l1; last2 = l2; last3 = l3;
   lastPct = pct;
+  lastLocked = volumeLocked;
+  lastAntiRepeat = parentalAntiRepeatEnabled;
 
   u8g2.clearBuffer();
   u8g2.setFont(u8g2_font_6x12_tf);
 
-  u8g2.drawUTF8(0, 12, l1.c_str());
+  u8g2.drawStr(0, 12, l1.c_str());
   u8g2.drawUTF8(0, 28, l2.c_str());
 
   if (needScroll) {
@@ -2002,11 +2212,62 @@ static void oledDraw3LinesIfChanged(uint32_t now, float currentVol) {
   } else {
     u8g2.drawUTF8(0, 44, l3.c_str());
   }
+
+  if (parentalAntiRepeatEnabled) drawNoRepeatIcon(96, 2);
+  if (volumeLocked) drawLockIcon(110, 2);
+
   drawVolumeBar(vol, volMin, volMax);
   u8g2.sendBuffer();
 }
 
-// End of
+
+/*
+static void oledDraw3LinesIfChanged(uint32_t now, float currentVol) {
+  // throttle
+  if ((uint32_t)(now - lastOledMs) < 100) return;
+
+  // beregn pct
+  const float volMin = VOL_MIN;
+  const float volMax = VOL_MAX;
+  float vol = clampf(currentVol, volMin, volMax);
+  int pct = (int)(100.0f * (vol - volMin) / (volMax - volMin) + 0.5f);
+
+  String l1 = String("Mode: ") + (gameState != GameState::IDLE ? "Game" : "Music");
+  const String &l2 = oledLine2;
+  const String &l3 = oledLine3;
+
+  // change detection: tekst/pct/lock
+  if (l1 == last1 && l2 == last2 && l3 == last3 && pct == lastPct && volumeLocked == lastLocked && parentalAntiRepeatEnabled == lastAntiRepeat)
+    return;
+
+  lastOledMs = now;
+  last1 = l1; last2 = l2; last3 = l3;
+  lastPct = pct;
+  lastLocked = volumeLocked;
+  lastAntiRepeat = parentalAntiRepeatEnabled;
+
+  u8g2.clearBuffer();
+  u8g2.setFont(u8g2_font_6x12_tf);
+
+  u8g2.drawStr(0, 12, l1.c_str());
+  u8g2.drawUTF8(0, 28, l2.c_str());
+  // linje 3 kan være scroll, men her simpelt:
+  //u8g2.drawUTF8(0, 44, l3.c_str());
+  drawScrollWithPauses(0, 44, l3.c_str(),now);
+  
+
+  // lock ikon (tegnes i buffer!)
+  if (volumeLocked) {
+    drawLockIcon(110, 2);
+  }
+
+  drawVolumeBar(vol, volMin, volMax);
+  if (parentalAntiRepeatEnabled) {
+    drawNoRepeatIcon(96, 2);   // fx ved siden af låsen
+}
+  u8g2.sendBuffer();
+}
+*/
 
 void setup() {
   Serial.begin(115200);
@@ -2026,7 +2287,7 @@ void setup() {
   }
 
   pinMode(PIN_LED_CARD, OUTPUT);
-  //digitalWrite(PIN_LED_CARD, LOW);
+  // digitalWrite(PIN_LED_CARD, LOW);
   ledSetNormal(false);
 
   Serial.println("Init SD...");
@@ -2109,6 +2370,8 @@ void loop() {
 
   static uint32_t lastPoll = 0;
   gameTick(lastPoll, isPlaying && !isPaused);
+  //Try this 
+  //gameTick(now, isPlaying && !isPaused);
 
   // Handle auto-advance from audioTask
   if (!gameModeActive && advanceNeeded) {
@@ -2122,16 +2385,7 @@ void loop() {
 
   maybeSaveVolume(now);
 
-  /*
-  // 2) RFID poll - Only each 25 ms
-  static uint32_t lastPoll = 0;
-
-  if (now - lastPoll < 25) {
-    return; // OK to return here, since buttons are already scanned above
-  }
-    */
-  // 2) RFID poll - Only each 25 ms
-
+ 
   if ((uint32_t)(now - lastPoll) >= 25) {
 
     lastPoll = now;
@@ -2141,18 +2395,18 @@ void loop() {
 
     // If no new card -> turn off LED and leave
     if (!mfrc522.PICC_IsNewCardPresent()) {
-      //digitalWrite(PIN_LED_CARD, LOW);
+      // digitalWrite(PIN_LED_CARD, LOW);
       ledSetNormal(false);
       return;
     }
 
     // New card detected -> LED on instantly
-    //digitalWrite(PIN_LED_CARD, HIGH);
+    // digitalWrite(PIN_LED_CARD, HIGH);
     ledSetNormal(true);
 
     if (!mfrc522.PICC_ReadCardSerial()) {
       // Card was detected, buth could not be read – Turn off LED again
-      //digitalWrite(PIN_LED_CARD, LOW);
+      // digitalWrite(PIN_LED_CARD, LOW);
       ledSetNormal(false);
       return;
     }
@@ -2167,12 +2421,48 @@ void loop() {
       Serial.print("Unknown UID: ");
       Serial.println(uid);
       ledSetNormal(false);
-      //digitalWrite(PIN_LED_CARD, LOW);
+      // digitalWrite(PIN_LED_CARD, LOW);
       return;
     }
 
     Serial.print("Current role is: ");
     Serial.println(e->role);
+
+    if (e->role == "parent") {
+      if (e->action == "toggle_anti_repeat") {
+        parentalAntiRepeatEnabled = !parentalAntiRepeatEnabled;
+
+        if (parentalAntiRepeatEnabled &&
+            uiMessages.antiRepeatEnabled.length() > 0) {
+          playPath(uiMessages.antiRepeatEnabled);
+        } else if (!parentalAntiRepeatEnabled &&
+                   uiMessages.antiRepeatDisabled.length() > 0) {
+          playPath(uiMessages.antiRepeatDisabled);
+        }
+      }
+      if (e->action == "toggle_volume_lock") {
+        volumeLocked = !volumeLocked;
+
+        if (volumeLocked) {
+          // Lås til nuværende værdi
+          lockedVolume = currentVolume;
+
+          if (uiMessages.volumeLockOn.length() > 0)
+            playPath(uiMessages.volumeLockOn);
+
+        } else {
+          // Når der låses op: fortsæt på den låste værdi
+          currentVolume = lockedVolume;
+
+          if (uiMessages.volumeLockOff.length() > 0)
+            playPath(uiMessages.volumeLockOff);
+        }
+  return;
+}
+
+      return;
+    }
+
     if (e->role == "game_selector") {
       Serial.println("GAME SELECT: " + e->gameId);
 
@@ -2226,11 +2516,9 @@ void loop() {
         else
           activeIndex = 0; // fallback, men afspilning styres stadig af 'path'
         oledLine2 = lookupAlbumTitleForTrackPath(path);
-        // if (oledLine2.length() == 0) oledLine2 = e->title; // fallback
-        oledLine3 = "";
-        uiSetNowPlayingFromPath(path);
-        // AFSPlIL ALTID DEN VALGTE FIL (ikke activeTracks[activeIndex])
-        playPath(path);
+        if (oledLine2.length() == 0) oledLine2 = e->title; // evt fallback
+        // Anti-repeat gate
+        playTrackDirect(path);
         return;
       } else if (e->kind == PK_ALBUM_FOLDER) {
         autoAdvance = true;
@@ -2239,7 +2527,7 @@ void loop() {
         if (!folder.startsWith("/"))
           folder = "/" + folder;
 
-        oledLine2 = "Track: " + e->title;
+        oledLine2 = e->title;
         oledLine3 = ""; // indtil JSON artist findes
         setActiveFromFolder(folder);
         playActiveIndex(0);
@@ -2247,7 +2535,7 @@ void loop() {
         autoAdvance = true;
         playlistEnded = false;
         setActiveFromTrackPool(e->trackStart, e->trackCount);
-        oledLine2 = "Track: " + e->title;
+        oledLine2 = e->title;
         oledLine3 = ""; // indtil JSON artist findes
         playActiveIndex(0);
       } else {
@@ -2259,13 +2547,17 @@ void loop() {
     Serial.print(uid);
   }
 
-  Serial.print("activeCount: ");
-  Serial.print(activeCount);
-  Serial.print("activeIndex: ");
-  Serial.print(+activeIndex);
-  Serial.print("activeTracks[0]: ");
-  Serial.print(activeTracks[0]);
+  static uint32_t lastDbg = 0;
+if (now - lastDbg > 500) {
+  lastDbg = now;
+  Serial.print("activeCount: "); Serial.print(activeCount);
+  Serial.print(" activeIndex: "); Serial.print(activeIndex);
+  if (activeCount > 0) { Serial.print(" activeTracks[0]: "); Serial.print(activeTracks[0]); }
+  Serial.println();
+}
+
+
   // Turn off LED after play was queded
-  //digitalWrite(PIN_LED_CARD, LOW);
+  // digitalWrite(PIN_LED_CARD, LOW);
   ledSetNormal(false);
 }

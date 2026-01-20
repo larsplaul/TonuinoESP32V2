@@ -1,6 +1,16 @@
 {
   "version": 1,
+  "messages": {
+    "anti_repeat_warning": "/audio/messages/vaelg_et_andet.mp3",
+    "anti_repeat_enabled": "/audio/messages/gentagelse_deaktiveret.mp3",
+    "anti_repeat_disabled": "/audio/messages/gentagelse_aktiveret.mp3",
+    "volume_lock_on":  "/audio/messages/volume_locked.mp3",
+    "volume_lock_off": "/audio/messages/volume_unlocked.mp3"
+  },
+
   "cards": [
+    { "uid": "D5461605", "role": "parent","action": "toggle_anti_repeat"},
+    { "uid": "D56A1405", "role": "parent", "action": "toggle_volume_lock" },
     {
       "uid": "CC7B0D05",
       "role": "music",
@@ -8,26 +18,167 @@
       "artist" : "Minisjang",
       "play": {
         "kind": "single",
-        "file": "/audio/diverse/hjulene på bussen##Minisjang.mp3"
+        "file": "/audio/minisjang/hjulene på bussen##Minisjang.mp3"
+      }
+    },
+     {
+      "uid": "17F71305",
+      "role": "music",
+      "title": "Skøre Knogler",
+      "artist" : "Minisjang",
+      "play": {
+        "kind": "single",
+        "file": "/audio/minisjang/knoglesangen##Minisjang.mp3"
+      }
+    },
+    {
+      "uid": "87FE1305",
+      "role": "music",
+      "title": "En Papegøje Fra Amerika",
+      "artist" : "Minisjang",
+      "play": {
+        "kind": "single",
+        "file": "/audio/mix/En Papegøje Fra Amerika##Sanne Salomonsen.mp3"
       }
     },
      {
       "uid": "15130C05",
       "role": "music",
       "title": "Bro bro brille",
-      "artist" : "eeeeeee",
+      "artist" : "- - -",
       "play": {
         "kind": "single",
-        "file": "/audio/mix/Bro_bro_brille.mp3"
+        "file": "/audio/mix/Bro_bro_brille##- - -.mp3"
       }
     },
     {
       "uid": "4C9BF504",
       "role": "music",
-      "title": "message",
+      "title": "Krumme sangen",
+      "artist" : "Lars Høybye",
       "play": {
         "kind": "single",
-        "file": "/audio/messages/besked.mp3"
+        "file": "/audio/diverse/Krummes sang##Michael Høybye.mp3"
+      }
+    },
+    {
+      "uid": "670A1005",
+      "role": "music",
+      "title": "FCK sangen",
+      "artist" : "Carøe og det fede net",
+      "play": {
+        "kind": "single",
+        "file": "/audio/diverse/Vi elsker FCK## Carøe og det fede net.mp3"
+      }
+    },
+    {
+      "uid": "21DD1005",
+      "role": "music",
+      "title": "Plukke æbler",
+      "artist" : "Minisjang",
+      "play": {
+        "kind": "single",
+        "file": "/audio/minisjang/Plukke æbler##Minisjang.mp3"
+      }
+    },
+    {
+      "uid": "4E0F0F05",
+      "role": "music",
+      "title": "To Liv",
+      "artist" : "Disney - Tarzan",
+      "play": {
+        "kind": "single",
+        "file": "/audio/disney/Tarzan - to liv##Disney.mp3"
+      }
+    },
+     {
+      "uid": "32451605",
+      "role": "music",
+      "title": "Oo-De-Lally",
+      "artist" : "Disney-Robin Hood",
+      "play": {
+        "kind": "single",
+        "file": "/audio/disney/Oo De Lally##Robin Hood - dansk.mp3"
+      }
+    },
+      {
+      "uid": "E5D10F05",
+      "role": "music",
+      "title": "Fjolledans",
+      "artist" : "Minisjang",
+      "play": {
+        "kind": "single",
+        "file": "/audio/minisjang/Fjolledans##Minisjang.mp3"
+      }
+    },
+     {
+      "uid": "45D30F05",
+      "role": "music",
+      "title": "Jeg er en dinosauar",
+      "artist" : "Lille Bille",
+      "play": {
+        "kind": "single",
+        "file": "/audio/diverse/Jeg er en dinosaur##Lille Bille.mp3"
+      }
+    },
+     {
+      "uid": "84DE0F05",
+      "role": "music",
+      "title": "Bjørne gymnastik",
+      "artist" : "Sigurt Barrett",
+      "play": {
+        "kind": "single",
+        "file": "/audio/diverse/Bjørnegymnastik##Sigurd Barrett.mp3"
+      }
+    },
+    {
+      "uid": "35471105",
+      "role": "music",
+      "title": "Fra engeland til skotland",
+      "artist" : "- - -",
+      "play": {
+        "kind": "single",
+        "file": "/audio/diverse/Fra Engeland Til Skotland##- - -.mp3"
+      }
+    },
+     {
+      "uid": "F2480F05",
+      "role": "music",
+      "title": "Hoved skulder...##Minisjang.mp3",
+      "artist" : "Minisjang",
+      "play": {
+        "kind": "single",
+        "file": "/audio/minisjang/Hoved skulder##Minisjang.mp3"
+      }
+    },
+     {
+      "uid": "971B1505",
+      "role": "music",
+      "title": "Højre venstre - PRUT",
+      "artist" : "Minisjang",
+      "play": {
+        "kind": "single",
+        "file": "/audio/minisjang/Her er højre her er venstre##Minisjang.mp3"
+      }
+    },
+     {
+      "uid": "BB441005",
+      "role": "music",
+      "title": "Jens Hansens Bondegård",
+      "artist" : "Sherif Haps",
+      "play": {
+        "kind": "single",
+        "file": "/audio/diverse/Jens Hansens Bondegård##Sherif Haps.mp3"
+      }
+    },
+     {
+      "uid": "36671605",
+      "role": "music",
+      "title": "Elefantens vuggevise",
+      "artist" : "Sigurd Barrett",
+      "play": {
+        "kind": "single",
+        "file": "/audio/diverse/Elefantens vuggevise##Sigurd Barrett.mp3"
       }
     },
     {
@@ -35,8 +186,27 @@
       "role": "music",
       "title": "Blandede sange",
       "play": {
+      "uid": "A38A1405",
         "kind": "album",
         "folder": "/audio/diverse"
+      }
+    },
+     {
+      "uid": "A38A1405",
+      "role": "music",
+      "title": "Jule sange",
+      "play": {
+        "kind": "album",
+        "folder": "/audio/julemusik"
+      }
+    },
+     {
+      "uid": "62B11405",
+      "role": "music",
+      "title": "Minisjang",
+      "play": {
+        "kind": "album",
+        "folder": "/audio/minisjang"
       }
     },
     {
@@ -58,26 +228,22 @@
           {
             "title": "Bro bro brille",
             "artist": "Popsi og Guitar-Krelle",
-            "file": "/audio/mix/Bro_bro_brille.mp3"
-          },
-          {
-            "title": "Fra Engeland Til Skotland",
-            "file": "/audio/mix/Fra Engeland Til Skotland.mp3"
+            "file": "/audio/mix/Bro_bro_brille##- - -.mp3"
           },
           {
             "title": "En Papegøje Fra Amerika",
             "artist" : "Sanne Salomonsen",
-            "file": "/audio/mix/JegErEnPapegøjeFraAmerika.mp3"
+            "file": "/audio/mix/En Papegøje Fra Amerika##Sanne Salomonsen.mp3"
           },
           {
             "title": "Jens Hansens Bondegård",
             "artist" : "Sherif Haps",
-            "file": "/audio/mix/JensHansensBondegård.mp3"
+            "file": "/audio/diverse/Jens Hansens Bondegård##Sherif Haps.mp3"
           },
           {
             "title": "sø og land",
             "artist": "Minisjang",
-            "file": "/audio/mix/sø_og_land.mp3"
+            "file": "/audio/Minisjang/Sø og land##Minisjang.mp3"
           }
         ]
       }
@@ -99,6 +265,8 @@
     { "uid": "27291605", "role": "answer", "tags": ["anders"]},
     { "uid": "D5751005", "role": "answer", "tags": ["christina"]},
     { "uid": "9AE30F05", "role": "answer", "tags": ["bille"]},
+    { "uid": "0E4F1005", "role": "answer", "tags": ["oldemor"]},
+    { "uid": "EBE60F05", "role": "answer", "tags": ["farmor_og_tre"]},    
 
     { "uid": "E2551005", "role": "answer", "tags": ["tal"], "value": 1},
     { "uid": "BC2E1405", "role": "answer", "tags": ["tal"], "value": 2},
@@ -162,7 +330,9 @@
          { "prompt": "/audio/games/venner/find_julie.mp3", "answer": {"type": "requireTags", "mode": "any","tags": ["julie"]}},
          { "prompt": "/audio/games/venner/find_anders.mp3", "answer": {"type": "requireTags", "mode": "any","tags": ["anders"]}},
          { "prompt": "/audio/games/venner/find_bille.mp3", "answer": {"type": "requireTags", "mode": "any","tags": ["bille"]}},
-         { "prompt": "/audio/games/venner/find_christina.mp3", "answer": {"type": "requireTags", "mode": "any","tags": ["christiana"]}}
+         { "prompt": "/audio/games/venner/find_oldemor.mp3", "answer": {"type": "requireTags", "mode": "any","tags": ["oldemor"]}},
+         { "prompt": "/audio/games/venner/farmor_robin_noelle_bille.mp3", "answer": {"type": "requireTags", "mode": "any","tags": ["farmor_og_tre"]}},
+         { "prompt": "/audio/games/venner/find_christina.mp3", "answer": {"type": "requireTags", "mode": "any","tags": ["christina"]}}
       ]
     },
     {
@@ -189,10 +359,12 @@
          { "prompt": "/audio/games/venner2/find_farmor_farfar.mp3", "answer": {"type": "requireTags", "mode": "all","tags": ["noels_farmor","noels_farfar"],"cards": 2 }},
          { "prompt": "/audio/games/venner2/find_julie_christina.mp3", "answer": {"type": "requireTags", "mode": "all","tags": ["julie","christina"],"cards": 2 }},
          { "prompt": "/audio/games/venner/find_robin.mp3", "answer": {"type": "requireTags", "mode": "any","tags": ["robin"]}},
+        { "prompt": "/audio/games/venner/farmor_robin_noelle_bille.mp3", "answer": {"type": "requireTags", "mode": "any","tags": ["farmor_og_tre"]}},
          { "prompt": "/audio/games/venner/find_maja.mp3", "answer": {"type": "requireTags", "mode": "any","tags": ["maja"]}},
          { "prompt": "/audio/games/venner/find_mark.mp3", "answer": {"type": "requireTags", "mode": "any","tags": ["mark"]}},
          { "prompt": "/audio/games/venner/find_vincent.mp3", "answer": {"type": "requireTags", "mode": "any","tags": ["vincent"]}},
          { "prompt": "/audio/games/venner/find_anders.mp3", "answer": {"type": "requireTags", "mode": "any","tags": ["anders"]}},
+         { "prompt": "/audio/games/venner/find_oldemor.mp3", "answer": {"type": "requireTags", "mode": "any","tags": ["oldemor"]}},
          { "prompt": "/audio/games/venner/find_bille.mp3", "answer": {"type": "requireTags", "mode": "any","tags": ["bille"]}}
          
       ]

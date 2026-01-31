@@ -5,12 +5,26 @@
     "anti_repeat_enabled": "/audio/messages/gentagelse_deaktiveret.mp3",
     "anti_repeat_disabled": "/audio/messages/gentagelse_aktiveret.mp3",
     "volume_lock_on":  "/audio/messages/volume_locked.mp3",
-    "volume_lock_off": "/audio/messages/volume_unlocked.mp3"
+    "volume_lock_off": "/audio/messages/volume_unlocked.mp3",
+    "mastercard_used" : "/audio/messages/godkendt_af_master.mp3",
+    "music_mode_info": "/audio/messages/nu_kan_du_spille_musik.mp3"
   },
 
   "cards": [
     { "uid": "D5461605", "role": "parent","action": "toggle_anti_repeat"},
     { "uid": "D56A1405", "role": "parent", "action": "toggle_volume_lock" },
+    { "uid": "E2551005", "role": "answer", "tags": ["master"] },
+    {
+      "uid": "35A02002",
+      "role": "music",
+      "title": "Soundtjek - left_right",
+      "artist" : "---",
+      "play": {
+        "kind": "single",
+        "file": "/audio/messages/sound tjek##soundtjek.mp3"
+      }
+    },
+
     {
       "uid": "CC7B0D05",
       "role": "music",
@@ -19,6 +33,27 @@
       "play": {
         "kind": "single",
         "file": "/audio/minisjang/hjulene på bussen##Minisjang.mp3"
+      }
+    },
+    {
+      "uid": "5BEC9902",
+      "role": "music",
+      "title": "Lille peter edderkop",
+      "artist" : "Ukendt",
+      "play": {
+        "kind": "single",
+        "file": "/audio/diverse/Lille PeterEdderkop##- - -.mp3"
+      }
+    }
+    ,
+    {
+      "uid": "534ED3A3020001",
+      "role": "music",
+      "title": "Mariehønen evigglad",
+      "artist" : "Ukendt",
+      "play": {
+        "kind": "single",
+        "file": "/audio/diverse/Mariehønen Evigglad##- - -.mp3"
       }
     },
      {
@@ -41,6 +76,16 @@
         "file": "/audio/mix/En Papegøje Fra Amerika##Sanne Salomonsen.mp3"
       }
     },
+    {
+      "uid": "0449533B575980",
+      "role": "music",
+      "title": "Bjørnen sover",
+      "artist": "Popsi og Guitar-Krelle",
+      "play": {
+        "kind": "single",
+        "file": "/audio/mix/Bjørnen Sover##Popsi og Krelle.mp3"
+      }
+    },
      {
       "uid": "15130C05",
       "role": "music",
@@ -50,7 +95,7 @@
         "kind": "single",
         "file": "/audio/mix/Bro_bro_brille##- - -.mp3"
       }
-    },
+        },
     {
       "uid": "4C9BF504",
       "role": "music",
@@ -63,6 +108,16 @@
     },
     {
       "uid": "670A1005",
+      "role": "music",
+      "title": "FCK sangen",
+      "artist" : "Carøe og det fede net",
+      "play": {
+        "kind": "single",
+        "file": "/audio/diverse/Vi elsker FCK## Carøe og det fede net.mp3"
+      }
+    },
+    {
+      "uid": "87D69602",
       "role": "music",
       "title": "FCK sangen",
       "artist" : "Carøe og det fede net",
@@ -91,6 +146,27 @@
         "file": "/audio/disney/Tarzan - to liv##Disney.mp3"
       }
     },
+     {
+      "uid": "4DA52002",
+      "role": "music",
+      "title": "En verden af liv",
+      "artist" : "Disney - Løvernes konge",
+      "play": {
+        "kind": "single",
+        "file": "/audio/disney/Løvernes Konge-En verden af liv##Lise Dandanell.mp3"
+      }
+    },
+     {
+      "uid": "53CDDAA3020001",
+      "role": "music",
+      "title": "En verden af liv",
+      "artist" : "Disney - Løvernes konge",
+      "play": {
+        "kind": "single",
+        "file": "/audio/disney/Løvernes Konge-En verden af liv##Lise Dandanell.mp3"
+      }
+    }
+    ,
      {
       "uid": "32451605",
       "role": "music",
@@ -121,6 +197,36 @@
         "file": "/audio/diverse/Jeg er en dinosaur##Lille Bille.mp3"
       }
     },
+    {
+      "uid": "538B59A5020001",
+      "role": "music",
+      "title": "Jeg er en dinosauar",
+      "artist" : "Lille Bille",
+      "play": {
+        "kind": "single",
+        "file": "/audio/diverse/Jeg er en dinosaur##Lille Bille.mp3"
+      }
+    },
+    {
+      "uid": "5B9C8F02",
+      "role": "music",
+      "title": "Mester Jacob",
+      "artist" : "Sigurt Barrett",
+      "play": {
+        "kind": "single",
+        "file": "/audio/diverse/Mester jacob##Sigurd Barrett.mp3"
+      }
+    },
+    {
+      "uid": "21199102",
+      "role": "music",
+      "title": "Bjerget i skoven",
+      "artist" : "Ukendt",
+      "play": {
+        "kind": "single",
+        "file": "/audio/mix/Bjerget I Skoven##unknown.mp3"
+      }
+    },
      {
       "uid": "84DE0F05",
       "role": "music",
@@ -129,6 +235,16 @@
       "play": {
         "kind": "single",
         "file": "/audio/diverse/Bjørnegymnastik##Sigurd Barrett.mp3"
+      }
+    },
+     {
+      "uid": "D9829102",
+      "role": "music",
+      "title": "Jeg ved en lærkerede",
+      "artist" : "Sigurt Barrett",
+      "play": {
+        "kind": "single",
+        "file": "/audio/diverse/Jeg ved en lærkerede##Syng med Sigurd.mp3"
       }
     },
     {
@@ -186,9 +302,45 @@
       "role": "music",
       "title": "Blandede sange",
       "play": {
-      "uid": "A38A1405",
         "kind": "album",
         "folder": "/audio/diverse"
+      }
+    }
+    ,
+    {
+      "uid": "110A9002",
+      "role": "music",
+      "title": "Disney Film",
+      "play": {
+        "kind": "album",
+        "folder": "/audio/disney"
+      }
+    },
+    {
+      "uid": "827F8F02",
+      "role": "music",
+      "title": "Åh abe 2",
+      "play": {
+        "kind": "album",
+        "folder": "/audio/Åh_abe2"
+      }
+    },
+    {
+      "uid": "5D348F02",
+      "role": "music",
+      "title": "Sigurds Julesalmer",
+      "play": {
+        "kind": "album",
+        "folder": "/audio/Sigurds_Julesalmer"
+      }
+    },
+    {
+      "uid": "E4FC8F02",
+      "role": "music",
+      "title": "Sange fra DR's julekalendre",
+      "play": {
+        "kind": "album",
+        "folder": "/audio/Julesange_fra_DRs_Julekalender"
       }
     },
      {
@@ -230,12 +382,22 @@
             "artist": "Popsi og Guitar-Krelle",
             "file": "/audio/mix/Bro_bro_brille##- - -.mp3"
           },
+           {
+            "title": "Bjørnen sover",
+            "artist": "Popsi og Guitar-Krelle",
+            "file": "/audio/mix/Bjørnen Sover##Popsi og Krelle.mp3"
+          },
           {
             "title": "En Papegøje Fra Amerika",
             "artist" : "Sanne Salomonsen",
             "file": "/audio/mix/En Papegøje Fra Amerika##Sanne Salomonsen.mp3"
           },
           {
+            "title": "Bjerget i skoven",
+            "artist" : "Unknown",
+            "file": "/audio/diverse/Bjerget I Skoven##unknown.mp3"
+          },
+           {
             "title": "Jens Hansens Bondegård",
             "artist" : "Sherif Haps",
             "file": "/audio/diverse/Jens Hansens Bondegård##Sherif Haps.mp3"
@@ -266,15 +428,50 @@
     { "uid": "D5751005", "role": "answer", "tags": ["christina"]},
     { "uid": "9AE30F05", "role": "answer", "tags": ["bille"]},
     { "uid": "0E4F1005", "role": "answer", "tags": ["oldemor"]},
+    { "uid": "63901005", "role": "answer", "tags": ["robin_noelle"]},
     { "uid": "EBE60F05", "role": "answer", "tags": ["farmor_og_tre"]},    
 
-    { "uid": "E2551005", "role": "answer", "tags": ["tal"], "value": 1},
-    { "uid": "BC2E1405", "role": "answer", "tags": ["tal"], "value": 2},
+    { "uid": "791E1005", "role": "answer", "tags": ["fire_elefanter"]},
+    { "uid": "71151605", "role": "answer", "tags": ["to_køer_tre_grise"]},
+    { "uid": "973D0B05", "role": "answer", "tags": ["to_elefanter"]},
+    { "uid": "CE7D1505", "role": "answer", "tags": ["tre_køer_to_grise"]},
+    { "uid": "C4BA0F05", "role": "answer", "tags": ["tre_køer_fem_grise"]},
+    { "uid": "95A30905", "role": "answer", "tags": ["fem_elefanter"]},
+    { "uid": "EE2A0B05", "role": "answer", "tags": ["tre_elefanter"]},
+    { "uid": "4C2E0705", "role": "answer", "tags": ["en_elefant"]},
+    { "uid": "7ACB0A05", "role": "answer", "tags": ["en_mariehøne"]},
+    { "uid": "BA860705", "role": "answer", "tags": ["fire_myrer_to_mariehøner"]},
+    { "uid": "C50A0E05", "role": "answer", "tags": ["tre_myrer"]},
+    { "uid": "C9880805", "role": "answer", "tags": ["fem_myrer"]},
+    { "uid": "B4EF0805", "role": "answer", "tags": ["tre_dinosauer"]},
+    { "uid": "4C9D0905", "role": "answer", "tags": ["fem_dinosauer"]},
+    { "uid": "71540E05", "role": "answer", "tags": ["en_dinosauer"]},
+
+
+    { "uid": "04F2F02B575980", "role": "answer", "tags": ["tal"], "value": 0},
+    { "uid": "04F6434B575980", "role": "answer", "tags": ["tal"], "value": 1},
+    { "uid": "04F4274B575980", "role": "answer", "tags": ["tal"], "value": 1},
+    { "uid": "0406773B575980", "role": "answer", "tags": ["tal"], "value": 2},
+    { "uid": "0444AD69575980", "role": "answer", "tags": ["tal"], "value": 2},
+    { "uid": "042AD42B575980", "role": "answer", "tags": ["tal"], "value": 3},
+    { "uid": "0435DC3B575980", "role": "answer", "tags": ["tal"], "value": 3},
+    { "uid": "0480D23B575980", "role": "answer", "tags": ["tal"], "value": 4},
+    { "uid": "04B3F34B575980", "role": "answer", "tags": ["tal"], "value": 4},
+    { "uid": "040FC53B575980", "role": "answer", "tags": ["tal"], "value": 5},
+    { "uid": "04A0743B575981", "role": "answer", "tags": ["tal"], "value": 6},
+    { "uid": "04E0813B575980", "role": "answer", "tags": ["tal"], "value": 7},
+    { "uid": "04CC9C3B575980", "role": "answer", "tags": ["tal"], "value": 8},
+    { "uid": "046A6E3B575980", "role": "answer", "tags": ["tal"], "value": 9},
+
+    
     { "uid": "XXXXXXXXX", "role": "answer", "tags": ["tal"], "value": 3 },
+
     { "uid": "53284104",  "role": "game_selector", "title": "Gæt et dyr", "gameId": "dyr"},
+    { "uid": "DBFE8F02",  "role": "game_selector", "title": "Gæt dyr og tal", "gameId": "dyr_tal"},
     { "uid": "A4CE0705",  "role": "game_selector", "title": "Gæt en ven", "gameId": "ven"},
     { "uid": "DDF90F05",  "role": "game_selector", "title": "Gæt en du kender 2", "gameId": "ven2"},
-    { "uid": "CC8D0E05",  "role": "game_selector", "title": "Leg med tal", "gameId": "tal"}
+    { "uid": "CC8D0E05",  "role": "game_selector", "title": "Leg med tal", "gameId": "tal"},
+    { "uid": "BC2E1405",  "role": "game_selector", "title": "Lægge tal sammen", "gameId": "tal_add"}
   ],
   "games": [
     {
@@ -300,10 +497,45 @@
       ]
     },
     {
+      "id": "dyr_tal",
+      "titel": "Find dyr og tæl",
+      "audio": {
+        "intro": "/audio/games/common/introGameGeneral.mp3",
+        "correct": "/audio/games/common/correct.mp3",
+        "nextCardForAnswer" : "/audio/games/common/nextCardForAnswer.mp3",
+        "musicHint": "/audio/games/common/musicHint.mp3",
+        "wrong": "/audio/games/common/wrong.mp3",
+        "done": "/audio/games/common/done.mp3",
+        "idleStop": "/audio/games/common/idleStop.mp3"
+      },
+      "timing": {
+        "answerTimeoutMs": 25000,
+         "nextCardRepeatMs": 18000,
+         "maxRepeat": 3
+      },
+      "questions": [
+        { "prompt": "/audio/games/dyr_og_tal/en_dinosauar.mp3", "answer": {"type": "requireTags","mode": "any", "tags": ["en_dinosauer"]}},
+        { "prompt": "/audio/games/dyr_og_tal/tre_dinosauarer.mp3", "answer": {"type": "requireTags","mode": "any", "tags": ["tre_dinosauer"]}},
+        { "prompt": "/audio/games/dyr_og_tal/fem_dinosauarer.mp3", "answer": {"type": "requireTags","mode": "any", "tags": ["fem_dinosauer"]}},
+        { "prompt": "/audio/games/dyr_og_tal/to_køer_tre_grise.mp3", "answer": {"type": "requireTags","mode": "any", "tags": ["to_køer_tre_grise"]}},
+        { "prompt": "/audio/games/dyr_og_tal/tre_køer_to_grise.mp3", "answer": {"type": "requireTags","mode": "any", "tags": ["tre_køer_to_grise"]}},
+        { "prompt": "/audio/games/dyr_og_tal/tre_køer_fem_grise.mp3", "answer": {"type": "requireTags","mode": "any", "tags": ["tre_køer_fem_grise"]}},
+        { "prompt": "/audio/games/dyr_og_tal/fem_elefanter.mp3", "answer": {"type": "requireTags","mode": "any", "tags": ["fem_elefanter"]}},
+        { "prompt": "/audio/games/dyr_og_tal/fire_elefanter.mp3", "answer": {"type": "requireTags","mode": "any", "tags": ["fire_elefanter"]}},
+        { "prompt": "/audio/games/dyr_og_tal/tre_elefanter.mp3", "answer": {"type": "requireTags","mode": "any", "tags": ["tre_elefanter"]}},
+        { "prompt": "/audio/games/dyr_og_tal/to_elefanter.mp3", "answer": {"type": "requireTags","mode": "any", "tags": ["to_elefanter"]}},
+        { "prompt": "/audio/games/dyr_og_tal/en_elefant.mp3", "answer": {"type": "requireTags","mode": "any", "tags": ["en_elefant"]}},
+        { "prompt": "/audio/games/dyr_og_tal/en_mariehøne.mp3", "answer": {"type": "requireTags","mode": "any", "tags": ["en_mariehøne"]}},
+        { "prompt": "/audio/games/dyr_og_tal/tre_myrer.mp3", "answer": {"type": "requireTags","mode": "any", "tags": ["tre_myrer"]}},
+        { "prompt": "/audio/games/dyr_og_tal/fem_myrer.mp3", "answer": {"type": "requireTags","mode": "any", "tags": ["fem_myrer"]}},
+        { "prompt": "/audio/games/dyr_og_tal/fire_myrer_to_mariehøner.mp3", "answer": {"type": "requireTags","mode": "any", "tags": ["fire_myrer_to_mariehøner"]}}
+      ]
+    },
+    {
       "id": "ven",
       "titel": "Find venner",
       "audio": {
-        "intro": "/audio/games/venner/intro_venner.mp3.mp3",
+        "intro": "/audio/games/venner/intro_venner.mp3",
         "correct": "/audio/games/venner/correct.mp3",
         "nextCardForAnswer" : "/audio/games/common/nextCardForAnswer.mp3",
         "musicHint": "/audio/games/common/musicHint.mp3",
@@ -331,6 +563,7 @@
          { "prompt": "/audio/games/venner/find_anders.mp3", "answer": {"type": "requireTags", "mode": "any","tags": ["anders"]}},
          { "prompt": "/audio/games/venner/find_bille.mp3", "answer": {"type": "requireTags", "mode": "any","tags": ["bille"]}},
          { "prompt": "/audio/games/venner/find_oldemor.mp3", "answer": {"type": "requireTags", "mode": "any","tags": ["oldemor"]}},
+         { "prompt": "/audio/games/venner/find_robin_noelle.mp3", "answer": {"type": "requireTags", "mode": "any","tags": ["robin_noelle"]}},
          { "prompt": "/audio/games/venner/farmor_robin_noelle_bille.mp3", "answer": {"type": "requireTags", "mode": "any","tags": ["farmor_og_tre"]}},
          { "prompt": "/audio/games/venner/find_christina.mp3", "answer": {"type": "requireTags", "mode": "any","tags": ["christina"]}}
       ]
@@ -359,9 +592,10 @@
          { "prompt": "/audio/games/venner2/find_farmor_farfar.mp3", "answer": {"type": "requireTags", "mode": "all","tags": ["noels_farmor","noels_farfar"],"cards": 2 }},
          { "prompt": "/audio/games/venner2/find_julie_christina.mp3", "answer": {"type": "requireTags", "mode": "all","tags": ["julie","christina"],"cards": 2 }},
          { "prompt": "/audio/games/venner/find_robin.mp3", "answer": {"type": "requireTags", "mode": "any","tags": ["robin"]}},
-        { "prompt": "/audio/games/venner/farmor_robin_noelle_bille.mp3", "answer": {"type": "requireTags", "mode": "any","tags": ["farmor_og_tre"]}},
+         { "prompt": "/audio/games/venner/farmor_robin_noelle_bille.mp3", "answer": {"type": "requireTags", "mode": "any","tags": ["farmor_og_tre"]}},
          { "prompt": "/audio/games/venner/find_maja.mp3", "answer": {"type": "requireTags", "mode": "any","tags": ["maja"]}},
          { "prompt": "/audio/games/venner/find_mark.mp3", "answer": {"type": "requireTags", "mode": "any","tags": ["mark"]}},
+         { "prompt": "/audio/games/venner/find_robin_noelle.mp3", "answer": {"type": "requireTags", "mode": "any","tags": ["robin_noelle"]}},
          { "prompt": "/audio/games/venner/find_vincent.mp3", "answer": {"type": "requireTags", "mode": "any","tags": ["vincent"]}},
          { "prompt": "/audio/games/venner/find_anders.mp3", "answer": {"type": "requireTags", "mode": "any","tags": ["anders"]}},
          { "prompt": "/audio/games/venner/find_oldemor.mp3", "answer": {"type": "requireTags", "mode": "any","tags": ["oldemor"]}},
@@ -371,7 +605,7 @@
     },
     {
       "id": "tal",
-      "titel" : "Leg med tal",
+      "titel" : "finde tal",
       "audio": {
         "intro": "/audio/games/common/introGameGeneral.mp3",
         "correct": "/audio/games/common/correct.mp3",
@@ -382,14 +616,52 @@
         "idleStop": "/audio/games/common/idleStop.mp3"
       },
       "timing": {
-         "answerTimeoutMs": 5000,
-         "nextCardRepeatMs": 8000,
+         "answerTimeoutMs": 22000,
+         "nextCardRepeatMs": 22000,
          "maxRepeat": 3
       },
       "questions": [
-        { "prompt": "/audio/games/tal/find2.mp3","answer": {"type": "sum","requireTags": [ "tal"],"equals": 2,"cards": 1}},
-        { "prompt": "/audio/games/tal/find_2_sum_3.mp3", "answer": {"type": "sum","requireTags": ["tal"],"equals": 3,"cards": 2}},
-        { "prompt": "/audio/games/tal/find_2_sum_4.mp3", "answer": {"type": "sum","requireTags": ["tal"],"equals": 4,"cards": 2}}
+        { "prompt": "/audio/games/tal/finde_1.mp3","answer": {"type": "sum","requireTags": [ "tal"],"equals": 1,"cards": 1}},
+        { "prompt": "/audio/games/tal/finde_2.mp3","answer": {"type": "sum","requireTags": [ "tal"],"equals": 2,"cards": 1}},
+        { "prompt": "/audio/games/tal/finde_3.mp3","answer": {"type": "sum","requireTags": [ "tal"],"equals": 3,"cards": 1}},
+        { "prompt": "/audio/games/tal/finde_4.mp3","answer": {"type": "sum","requireTags": [ "tal"],"equals": 4,"cards": 1}},
+        { "prompt": "/audio/games/tal/finde_5.mp3","answer": {"type": "sum","requireTags": [ "tal"],"equals": 5,"cards": 1}},
+        { "prompt": "/audio/games/tal/finde_6.mp3","answer": {"type": "sum","requireTags": [ "tal"],"equals": 6,"cards": 1}},
+        { "prompt": "/audio/games/tal/finde_7.mp3","answer": {"type": "sum","requireTags": [ "tal"],"equals": 7,"cards": 1}},
+        { "prompt": "/audio/games/tal/finde_8.mp3","answer": {"type": "sum","requireTags": [ "tal"],"equals": 8,"cards": 1}},
+        { "prompt": "/audio/games/tal/finde_9.mp3","answer": {"type": "sum","requireTags": [ "tal"],"equals": 9,"cards": 1}}
+      ]
+    },
+    {
+      "id": "tal_add",
+      "titel" : "Lægge tal sammen",
+      "audio": {
+        "intro": "/audio/games/common/introGameGeneral.mp3",
+        "correct": "/audio/games/common/correct.mp3",
+        "nextCardForAnswer" : "/audio/games/common/nextCardForAnswer.mp3",
+        "musicHint": "/audio/games/common/musicHint.mp3",
+        "wrong": "/audio/games/common/wrong.mp3",
+        "done": "/audio/games/common/done.mp3",
+        "idleStop": "/audio/games/common/idleStop.mp3"
+      },
+      "timing": {
+         "answerTimeoutMs": 22000,
+         "nextCardRepeatMs": 22000,
+         "maxRepeat": 3
+      },
+      "questions": [
+        { "prompt": "/audio/games/tal/finde_2.mp3","answer": {"type": "sum","requireTags": [ "tal"],"equals": 2,"cards": 1}},
+        { "prompt": "/audio/games/tal/finde_5.mp3","answer": {"type": "sum","requireTags": [ "tal"],"equals": 5,"cards": 1}},
+        { "prompt": "/audio/games/tal/finde_6.mp3","answer": {"type": "sum","requireTags": [ "tal"],"equals": 6,"cards": 1}},
+        { "prompt": "/audio/games/tal/finde_9.mp3","answer": {"type": "sum","requireTags": [ "tal"],"equals": 9,"cards": 1}},
+        { "prompt": "/audio/games/tal_add/find_2_sum_3.mp3", "answer": {"type": "sum","requireTags": ["tal"],"equals": 3,"cards": 2}},
+        { "prompt": "/audio/games/tal_add/find_2_sum_4.mp3", "answer": {"type": "sum","requireTags": ["tal"],"equals": 4,"cards": 2}},
+        { "prompt": "/audio/games/tal_add/find_2_sum_5.mp3", "answer": {"type": "sum","requireTags": ["tal"],"equals": 5,"cards": 2}},
+        { "prompt": "/audio/games/tal_add/find_2_sum_6.mp3", "answer": {"type": "sum","requireTags": ["tal"],"equals": 6,"cards": 2}},
+        { "prompt": "/audio/games/tal_add/find_2_sum_7.mp3", "answer": {"type": "sum","requireTags": ["tal"],"equals": 7,"cards": 2}},
+        { "prompt": "/audio/games/tal_add/find_2_sum_8.mp3", "answer": {"type": "sum","requireTags": ["tal"],"equals": 8,"cards": 2}},
+        { "prompt": "/audio/games/tal_add/find_2_sum_9.mp3", "answer": {"type": "sum","requireTags": ["tal"],"equals": 9,"cards": 2}}
+
       ]
     }
   ]

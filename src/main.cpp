@@ -221,6 +221,10 @@ struct UiMessages {
 
   String volumeLockOn;
   String volumeLockOff;
+
+  String mastercard_used;
+
+  String musicModeInfo;
 };
 
 static UiMessages uiMessages;
@@ -349,7 +353,7 @@ struct CardEntry {
   String action;
 };
 
-static constexpr size_t MAX_CARDS = 80;
+static constexpr size_t MAX_CARDS = 200;
 CardEntry cards[MAX_CARDS];
 size_t cardCount = 0;
 
@@ -580,9 +584,12 @@ static const CardEntry *findCardByUid(const String &uid) {
   return nullptr;
 }
 
+constexpr size_t DOC_SIZE = 120 * 1024;
 static bool loadCardsJson(const char *jsonPath) {
   trackPoolCount = 0;
   cardCount = 0;
+
+  Serial.println("****** loadCardsJson **********");
 
   File f = SD.open(jsonPath, FILE_READ);
   if (!f) {
@@ -592,10 +599,17 @@ static bool loadCardsJson(const char *jsonPath) {
   }
 
   // Increase if JSON grows
-  DynamicJsonDocument doc(16384);
+  //DynamicJsonDocument doc(16384);
+  DynamicJsonDocument doc(DOC_SIZE);
 
   DeserializationError err = deserializeJson(doc, f);
   f.close();
+   Serial.println("loadCardsJson");
+  Serial.print("JSON capacity: ");
+  Serial.println(doc.capacity());
+
+  Serial.print("JSON memoryUsage: ");
+  Serial.println(doc.memoryUsage());
 
   if (err) {
     Serial.print("JSON parse error: ");
@@ -612,6 +626,10 @@ static bool loadCardsJson(const char *jsonPath) {
     uiMessages.volumeLockOn  = String((const char*)(msgs["volume_lock_on"]  | ""));
     uiMessages.volumeLockOff = String((const char*)(msgs["volume_lock_off"] | ""));
 
+    uiMessages.mastercard_used = String((const char*)(msgs["mastercard_used"] | ""));
+
+    uiMessages.musicModeInfo =   String((const char*)(msgs["music_mode_info"] | ""));
+
   }
 
   JsonArray arr = doc["cards"].as<JsonArray>();
@@ -621,8 +639,10 @@ static bool loadCardsJson(const char *jsonPath) {
   }
 
   for (JsonObject c : arr) {
-    if (cardCount >= MAX_CARDS)
+    if (cardCount >= MAX_CARDS){
+      Serial.println("WARNING: MAX_CARDS reached – some cards ignored");
       break;
+    }
 
     const char *uid = c["uid"] | "";
     const char *role = c["role"] | "";
@@ -657,8 +677,11 @@ static bool loadCardsJson(const char *jsonPath) {
 
     // -------- role-specific parsing --------
     if (ce.role == "game_selector") {
+      Serial.println("***** game_selector *****");
       const char *gid = c["gameId"] | "";
       ce.gameId = String(gid);
+
+
     } else if (ce.role == "answer") {
       // tags[]
       JsonArray tags = c["tags"].as<JsonArray>();
@@ -1055,6 +1078,14 @@ static bool hasTag(const PendingCard &c, const String &tag) {
   return false;
 }
 
+static bool hasTag(const CardEntry &c, const String &tag) {
+  for (uint8_t i = 0; i < c.tagCount; i++) {
+    if (c.tags[i] == tag)
+      return true;
+  }
+  return false;
+}
+
 static bool unionHasTag(const String &unionTags, const String &tag) {
   // simple contains with delimiters; we use "|tag|" encoding in buildUnionTags
   String needle = "|" + tag + "|";
@@ -1329,6 +1360,28 @@ static void gameOnAnswerScanned(const CardEntry &card) {
   if (need > MAX_PENDING)
     need = MAX_PENDING;
 
+    // -------- MASTER CARD (fail-safe) --------
+  if (hasTag(card, "master")) {
+    // Fuldfør spørgsmålet straks som korrekt (uanset rule)
+    lastAnswerWasCorrect = true;
+
+    
+    gameState = GameState::FEEDBACK; // vi "springer" direkte til feedback + korrekt lyd
+    if (uiMessages.mastercard_used.length() > 0) {
+    playPath(uiMessages.mastercard_used);
+  } else {
+    playPath(selectCorrectAudio(g, q)); // fallback hvis ikke sat i JSON
+  }
+
+    // ryd pending så vi ikke efterlader state
+    clearPending();
+
+    // stop evt. "next card" reminder flow
+    nextCardDueAt = 0;
+    nextCardRepeatCount = 0;
+
+    return;
+  }
   if (pendingCount >= need)
     return; // already have enough
 
@@ -1664,8 +1717,15 @@ static bool loadGamesJson(const char *jsonPath) {
     return false;
   }
 
-  DynamicJsonDocument doc(16384);
+  //DynamicJsonDocument doc(16384);
+  DynamicJsonDocument doc(DOC_SIZE);
   DeserializationError err = deserializeJson(doc, f);
+  Serial.println("loadGamesJson");
+  Serial.print("JSON capacity: ");
+  Serial.println(doc.capacity());
+
+  Serial.print("JSON memoryUsage: ");
+  Serial.println(doc.memoryUsage());
   f.close();
   if (err) {
     Serial.print("Games JSON parse error: ");
@@ -1890,7 +1950,14 @@ static void handleAction(Action a) {
     // Music button pressed, but no music yet selected
     oledLine2 = "";
     oledLine3 = "";
+    bool cameFromGame = gameModeActive;
     gameEnterIdle(); // THIS is your rule: only music button exits game
+    Serial.println("Came from game: ");
+    Serial.println(cameFromGame ? "YES" :"NO");
+    Serial.print(uiMessages.musicModeInfo.length());
+     if (cameFromGame && uiMessages.musicModeInfo.length() > 0) {
+    playPath(uiMessages.musicModeInfo);
+  }
     break;
   }
 }
@@ -2220,55 +2287,6 @@ static void oledDraw3LinesIfChanged(uint32_t now, float currentVol) {
   u8g2.sendBuffer();
 }
 
-
-/*
-static void oledDraw3LinesIfChanged(uint32_t now, float currentVol) {
-  // throttle
-  if ((uint32_t)(now - lastOledMs) < 100) return;
-
-  // beregn pct
-  const float volMin = VOL_MIN;
-  const float volMax = VOL_MAX;
-  float vol = clampf(currentVol, volMin, volMax);
-  int pct = (int)(100.0f * (vol - volMin) / (volMax - volMin) + 0.5f);
-
-  String l1 = String("Mode: ") + (gameState != GameState::IDLE ? "Game" : "Music");
-  const String &l2 = oledLine2;
-  const String &l3 = oledLine3;
-
-  // change detection: tekst/pct/lock
-  if (l1 == last1 && l2 == last2 && l3 == last3 && pct == lastPct && volumeLocked == lastLocked && parentalAntiRepeatEnabled == lastAntiRepeat)
-    return;
-
-  lastOledMs = now;
-  last1 = l1; last2 = l2; last3 = l3;
-  lastPct = pct;
-  lastLocked = volumeLocked;
-  lastAntiRepeat = parentalAntiRepeatEnabled;
-
-  u8g2.clearBuffer();
-  u8g2.setFont(u8g2_font_6x12_tf);
-
-  u8g2.drawStr(0, 12, l1.c_str());
-  u8g2.drawUTF8(0, 28, l2.c_str());
-  // linje 3 kan være scroll, men her simpelt:
-  //u8g2.drawUTF8(0, 44, l3.c_str());
-  drawScrollWithPauses(0, 44, l3.c_str(),now);
-  
-
-  // lock ikon (tegnes i buffer!)
-  if (volumeLocked) {
-    drawLockIcon(110, 2);
-  }
-
-  drawVolumeBar(vol, volMin, volMax);
-  if (parentalAntiRepeatEnabled) {
-    drawNoRepeatIcon(96, 2);   // fx ved siden af låsen
-}
-  u8g2.sendBuffer();
-}
-*/
-
 void setup() {
   Serial.begin(115200);
   delay(200);
@@ -2427,6 +2445,7 @@ void loop() {
 
     Serial.print("Current role is: ");
     Serial.println(e->role);
+    Serial.println(uid);
 
     if (e->role == "parent") {
       if (e->action == "toggle_anti_repeat") {
